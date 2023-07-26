@@ -27,7 +27,7 @@ impl PartialEq for Person {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Percentage {
   value: i32,
 }
@@ -35,6 +35,16 @@ pub struct Percentage {
 impl Percentage {
   pub fn value(&self) -> i32 {
     self.value
+  }
+
+  pub fn emoji(&self) -> &str {
+    if self.value() < 100 {
+      "💪🏻"
+    } else if self.value() < 150 {
+      "⚡️"
+    } else {
+      "🏆"
+    }
   }
 
   pub fn from(value: i32) -> Percentage {

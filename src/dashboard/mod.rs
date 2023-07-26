@@ -46,6 +46,10 @@ impl Dashboard {
     self.build_analyzer().last_filled_score_table_record(person)
   }
 
+  pub fn today_filled_score_table_record(&self, person: &Person) -> Option<&ScoreTableRecord> {
+    self.build_analyzer().today_filled_score_table_record(person)
+  }
+
   /// Return list of the participants
   pub fn participants(&self) -> Option<Vec<&Person>> {
     self.build_analyzer().participants()
