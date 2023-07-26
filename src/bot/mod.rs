@@ -157,15 +157,7 @@ impl Congratulator {
           .iter()
           .filter_map(|p| {
             dashboard.today_filled_score_table_record(p).map(|rec| {
-              let percent = rec.percent();
-              let percent_emoji = if percent.value() < 100 {
-                "💪🏻"
-              } else if percent.value() < 150 {
-                "⚡️"
-              } else {
-                "🏆"
-              };
-              format!("{} молодец на {} {}", p.name(), percent, percent_emoji)
+              format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji())
             })
           })
           .collect();

@@ -159,8 +159,12 @@ impl std::fmt::Display for ScoreTableRecord {
       f,
       "🗓️ __Дата__: {}\n\n{}\n\
        ✅ *Total*: {}\n\
-       💪 *Rate*: {}\n",
-            self.date.format("%d.%m.%Y"), self.scores, self.total_score, self.percent
+       💯 *Rate*: {} {}\n",
+      self.date.format("%d.%m.%Y"),
+      self.scores,
+      self.total_score,
+      self.percent,
+      self.percent.emoji()
     )
   }
 }

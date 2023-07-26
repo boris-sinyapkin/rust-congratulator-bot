@@ -37,6 +37,16 @@ impl Percentage {
     self.value
   }
 
+  pub fn emoji(&self) -> &str {
+    if self.value() < 100 {
+      "💪🏻"
+    } else if self.value() < 150 {
+      "⚡️"
+    } else {
+      "🏆"
+    }
+  }
+
   pub fn from(value: i32) -> Percentage {
     Percentage { value }
   }
