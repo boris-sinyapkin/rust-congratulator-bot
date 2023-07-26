@@ -54,14 +54,12 @@ pub struct Congratulator {
 }
 
 impl Congratulator {
-  const BOT_TOKEN: &str = "6198593302:AAEGKsJx-8kMRXLclf-rWuA45_Pehc94wMQ";
-
   pub async fn new() -> Result<Self, Error> {
     info!("[Congratulator] Bot is getting created");
     let hub = AsyncSheetsHub::new().await?;
     let dashboard = Arc::new(hub.fetch_dashboard().await?);
 
-    let bot = Bot::new(Congratulator::BOT_TOKEN);
+    let bot = Bot::from_env();
     bot.set_my_commands(Command::bot_commands()).await?;
 
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
