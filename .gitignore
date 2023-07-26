@@ -1,7 +1,1 @@
 /target
-/.vscode
-token.json
-credentials.json
-settings.json
-rustfmt.toml
-Cargo.lock
