@@ -8,6 +8,7 @@ pub enum CongratulatorError {
   TeloxideRequestError(teloxide::RequestError),
   EmptyCallbackData,
   EmptyDashboard,
+  EmpyParticipants,
   BotIsNotInitialized,
   PersonNotFound
 }
@@ -19,6 +20,7 @@ impl Display for CongratulatorError {
       CongratulatorError::PersonNotFound => writeln!(f, "Person was not found"),
       CongratulatorError::EmptyCallbackData => writeln!(f, "Empty (None) callback data received"),
       CongratulatorError::EmptyDashboard => writeln!(f, "Dashboard is empty"),
+      CongratulatorError::EmpyParticipants => writeln!(f, "No participants have been identified"),
       CongratulatorError::AsyncSheetsHubError(err) => err.fmt(f),
       CongratulatorError::TeloxideRequestError(err) => err.fmt(f)
     }

@@ -41,6 +41,8 @@ enum Command {
   Participants,
   #[command(description = "show scores of a participant")]
   Scores,
+  #[command(description = "show score summary for current date")]
+  Summary,
 }
 
 type CongratulatorDialogue = Dialogue<State, InMemStorage<State>>;
@@ -145,6 +147,46 @@ impl Congratulator {
     Ok(())
   }
 
+  async fn summary(bot: Bot, msg: Message, dashboard: Arc<Dashboard>) -> CongratulatorHandlerResult {
+    let chat_id = msg.chat.id;
+    info!("[Congratulator][Summary] Start handling Summary (chat_id={})", chat_id);
+    match dashboard.participants() {
+      Some(persons) => {
+        debug!("[Congratulator][Summary] Found {} participants", persons.len());
+        let summary: Vec<String> = persons
+          .iter()
+          .filter_map(|p| {
+            dashboard.today_filled_score_table_record(p).map(|rec| {
+              let percent = rec.percent();
+              let percent_emoji = if percent.value() < 100 {
+                "💪🏻"
+              } else if percent.value() < 150 {
+                "⚡️"
+              } else {
+                "🏆"
+              };
+              format!("{} молодец на {} {}", p.name(), percent, percent_emoji)
+            })
+          })
+          .collect();
+
+        let msg = if summary.is_empty() {
+          "Сегодня пока еще *ни один* из участников таблицу не заполнял 😩😭".to_string()
+        } else {
+          join(summary, "\n")
+        };
+
+        bot.send_message(chat_id, msg).parse_mode(ParseMode::MarkdownV2).await?;
+      }
+      None => {
+        warn!("[Congratulator][Summary] The participants were not found");
+        bot.send_message(chat_id, "Список пользователей пуст 😩😭").await?;
+      }
+    }
+    info!("[Congratulator][Summary] Finished handling (chat_id={})", chat_id);
+    Ok(())
+  }
+
   async fn invalid_state(bot: Bot, msg: Message) -> CongratulatorHandlerResult {
     bot
       .send_message(
@@ -211,7 +253,8 @@ impl Congratulator {
       .branch(case![Command::Help].endpoint(Congratulator::help))
       .branch(case![Command::Dice].endpoint(Congratulator::dice))
       .branch(case![Command::Participants].endpoint(Congratulator::participants))
-      .branch(case![Command::Scores].endpoint(Congratulator::scores));
+      .branch(case![Command::Scores].endpoint(Congratulator::scores))
+      .branch(case![Command::Summary].endpoint(Congratulator::summary));
 
     let message_handler = Update::filter_message()
       .branch(command_handler)

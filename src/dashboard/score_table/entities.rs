@@ -27,7 +27,7 @@ impl PartialEq for Person {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Percentage {
   value: i32,
 }

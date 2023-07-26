@@ -28,6 +28,10 @@ impl ScoreTable {
   pub fn last_filled_record(&self) -> Option<&ScoreTableRecord> {
     self.table.iter().rev().find(|rec| rec.has_total())
   }
+
+  pub fn by_date(&self, date: &NaiveDate) -> Option<&ScoreTableRecord> {
+    self.table.iter().rev().find(|rec| rec.date == *date)
+  }
 }
 
 #[derive(Debug, Default)]
@@ -50,6 +54,10 @@ impl ScoreTableRecord {
 
   pub fn has_total(&self) -> bool {
     self.total_score != Scores::UNITITIALIZED_SCORE
+  }
+
+  pub fn percent(&self) -> &Percentage {
+    &self.percent
   }
 
   pub fn from_vec(row: &Vec<CellData>) -> Result<ScoreTableRecord, Error> {
