@@ -16,7 +16,7 @@ impl<'a> DashboardAnalyzer<'a> {
     None
   }
 
-  pub fn last_score_table_record(&self, person: &Person) -> Option<&'a ScoreTableRecord> {
+  pub fn last_filled_score_table_record(&self, person: &Person) -> Option<&'a ScoreTableRecord> {
     match self.find_table(person) {
       Some(table) => table.last_filled_record(),
       _ => None,

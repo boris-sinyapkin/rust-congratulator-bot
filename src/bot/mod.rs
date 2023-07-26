@@ -179,7 +179,7 @@ impl Congratulator {
     })?;
 
     debug!("[Congratulator][ReceiveSelectedUser] Selected person = {:?}", person);
-    match dashboard.last_score_table_record(person) {
+    match dashboard.last_filled_score_table_record(person) {
       Some(last_record) => {
         trace!("[Congratulator][ReceiveSelectedUser] Found {:?}", last_record);
         bot
