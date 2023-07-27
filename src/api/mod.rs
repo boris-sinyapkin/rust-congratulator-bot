@@ -18,10 +18,6 @@ use crate::{
 
 use self::requests::ScoreTableRequest;
 
-static SPREADSHEET_ID: &str = "1rFK_ZI3exSxRicwDfnHnxkt-zHLDgv9OpAZe7Y9v9S4";
-static CREDS_PATH: &str = "etc/credentials.json";
-static TOKEN_PATH: &str = "etc/token.json";
-
 async fn create_hub(creds_path: &str, token_path: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
   let connector = hyper_rustls::HttpsConnector::with_native_roots();
   let client = Client::builder().build(connector);
