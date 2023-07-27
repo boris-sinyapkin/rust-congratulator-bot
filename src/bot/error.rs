@@ -6,11 +6,12 @@ use crate::api;
 pub enum CongratulatorError {
   AsyncSheetsHubError(api::error::AsyncSheetsHubError),
   TeloxideRequestError(teloxide::RequestError),
+  ConfigError(config::ConfigError),
   EmptyCallbackData,
   EmptyDashboard,
   EmpyParticipants,
   BotIsNotInitialized,
-  PersonNotFound
+  PersonNotFound,
 }
 
 impl Display for CongratulatorError {
@@ -22,7 +23,8 @@ impl Display for CongratulatorError {
       CongratulatorError::EmptyDashboard => writeln!(f, "Dashboard is empty"),
       CongratulatorError::EmpyParticipants => writeln!(f, "No participants have been identified"),
       CongratulatorError::AsyncSheetsHubError(err) => err.fmt(f),
-      CongratulatorError::TeloxideRequestError(err) => err.fmt(f)
+      CongratulatorError::TeloxideRequestError(err) => err.fmt(f),
+      CongratulatorError::ConfigError(err) => err.fmt(f),
     }
   }
 }
@@ -36,6 +38,12 @@ impl std::convert::From<api::error::AsyncSheetsHubError> for CongratulatorError 
 impl std::convert::From<teloxide::RequestError> for CongratulatorError {
   fn from(value: teloxide::RequestError) -> Self {
     CongratulatorError::TeloxideRequestError(value)
+  }
+}
+
+impl std::convert::From<config::ConfigError> for CongratulatorError {
+  fn from(value: config::ConfigError) -> Self {
+    CongratulatorError::ConfigError(value)
   }
 }
 

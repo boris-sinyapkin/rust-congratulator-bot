@@ -1,3 +1,4 @@
+pub mod config;
 pub mod error;
 
 use itertools::free::join;
@@ -22,6 +23,8 @@ use crate::{
     Dashboard,
   },
 };
+
+use self::config::CongratulatorConfig;
 
 #[derive(Clone, Default)]
 pub enum State {
@@ -56,12 +59,12 @@ pub struct Congratulator {
 }
 
 impl Congratulator {
-  pub async fn new() -> Result<Self, Error> {
+  pub async fn new(cfg: CongratulatorConfig) -> Result<Self, Error> {
     info!("[Congratulator] Bot is getting created");
-    let hub = AsyncSheetsHub::new().await?;
+    let hub = AsyncSheetsHub::new(cfg.api_creds_path(), cfg.api_token_path(), cfg.spreadsheet_id()).await?;
     let dashboard = Arc::new(hub.fetch_dashboard().await?);
 
-    let bot = Bot::from_env();
+    let bot = Bot::new(cfg.bot_token_str());
     bot.set_my_commands(Command::bot_commands()).await?;
 
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
@@ -156,9 +159,9 @@ impl Congratulator {
         let summary: Vec<String> = persons
           .iter()
           .filter_map(|p| {
-            dashboard.today_filled_score_table_record(p).map(|rec| {
-              format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji())
-            })
+            dashboard
+              .today_filled_score_table_record(p)
+              .map(|rec| format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji()))
           })
           .collect();
 

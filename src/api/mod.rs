@@ -22,10 +22,10 @@ static SPREADSHEET_ID: &str = "1rFK_ZI3exSxRicwDfnHnxkt-zHLDgv9OpAZe7Y9v9S4";
 static CREDS_PATH: &str = "etc/credentials.json";
 static TOKEN_PATH: &str = "etc/token.json";
 
-async fn create_hub() -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
+async fn create_hub(creds_path: &str, token_path: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
   let connector = hyper_rustls::HttpsConnector::with_native_roots();
   let client = Client::builder().build(connector);
-  let auth = self::auth(CREDS_PATH, TOKEN_PATH).await?;
+  let auth = self::auth(creds_path, token_path).await?;
 
   Ok(Sheets::new(client, auth))
 }
@@ -49,15 +49,16 @@ async fn auth(
   Ok(authenticator)
 }
 
-pub struct AsyncSheetsHub {
+pub struct AsyncSheetsHub<'a> {
   hub: Sheets<hyper_rustls::HttpsConnector<HttpConnector>>,
+  spreadsheet_id: &'a str,
 }
 
-impl AsyncSheetsHub {
-  pub async fn new() -> Result<AsyncSheetsHub, Error> {
-    let hub = create_hub().await?;
+impl<'a> AsyncSheetsHub<'a> {
+  pub async fn new(creds_path: &str, token_path: &str, spreadsheet_id: &'a str) -> Result<AsyncSheetsHub<'a>, Error> {
+    let hub = create_hub(creds_path, token_path).await?;
 
-    Ok(AsyncSheetsHub { hub })
+    Ok(AsyncSheetsHub { hub, spreadsheet_id })
   }
 
   pub async fn fetch_dashboard(&self) -> Result<Dashboard, Error> {
@@ -188,7 +189,11 @@ impl AsyncSheetsHub {
       "[AsyncHub] Start fetching spreadsheet (include_grid_data={:})...",
       include_grid_data
     );
-    let request = self.hub.spreadsheets().get(SPREADSHEET_ID).include_grid_data(include_grid_data);
+    let request = self
+      .hub
+      .spreadsheets()
+      .get(self.spreadsheet_id)
+      .include_grid_data(include_grid_data);
     let (_body, spreadsheet) = request.doit().await?;
     info!("[AsyncHub] Finish fetching spreadsheet");
     Ok(spreadsheet)
@@ -196,7 +201,7 @@ impl AsyncSheetsHub {
 
   async fn fetch_spreadsheet_with_data_filter(&self, filter: GetSpreadsheetByDataFilterRequest) -> Result<Spreadsheet, Error> {
     info!("[AsyncHub] Start fetching spreadsheet with filter data request...");
-    let request = self.hub.spreadsheets().get_by_data_filter(filter, SPREADSHEET_ID);
+    let request = self.hub.spreadsheets().get_by_data_filter(filter, self.spreadsheet_id);
     let (_body, spreadsheet) = request.doit().await?;
     info!("[AsyncHub] Finish fetching spreadsheet");
     Ok(spreadsheet)
