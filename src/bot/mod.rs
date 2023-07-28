@@ -121,8 +121,9 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn participants(bot: Bot, msg: Message, dashboard: Arc<Dashboard>) -> CongratulatorHandlerResult {
+  async fn participants(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
+    let dashboard = locked_dashboard.read().await;
     info!("[Congratulator] Sending participants to chat_id={}", chat_id);
     let msg = match dashboard.participants_names() {
       Some(names) => join(&names, "\n"),
