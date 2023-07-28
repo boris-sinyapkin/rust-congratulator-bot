@@ -14,6 +14,10 @@ pub struct Dashboard {
 }
 
 impl Dashboard {
+  pub fn new() -> Self {
+    Self { score_tables: None }
+  }
+
   pub fn from(score_tables: Vec<ScoreTable>) -> Self {
     Self {
       score_tables: Some(score_tables),

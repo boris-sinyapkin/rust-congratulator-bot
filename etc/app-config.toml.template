@@ -2,3 +2,4 @@ bot_token=<telegram-bot-token>
 spreadsheet_id = <google-spreadsheet-id>
 api_creds_path = 'etc/google_auth_credentials.json'
 api_token_path = 'etc/google_auth_token.json'
+api_data_fetch_task_interval_min = 2

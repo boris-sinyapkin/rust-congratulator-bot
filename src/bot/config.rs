@@ -10,6 +10,7 @@ pub struct CongratulatorConfig {
   spreadsheet_id: String,
   api_creds_path: String,
   api_token_path: String,
+  api_data_fetch_task_interval_min: u32
 }
 
 impl CongratulatorConfig {
@@ -19,6 +20,10 @@ impl CongratulatorConfig {
     let deserialized = serialized.try_deserialize::<Self>()?;
     info!("[Config] Application config has been loaded");
     Ok(deserialized)
+  }
+
+  pub fn fetch_data_interval_min(&self) -> u32 {
+    self.api_data_fetch_task_interval_min
   }
 
   pub fn spreadsheet_id(&self) -> &str {
@@ -45,6 +50,7 @@ impl ::std::default::Default for CongratulatorConfig {
       spreadsheet_id: "Unknown Spreadsheet Id".to_string(),
       api_creds_path: "etc/credentials.json".to_string(),
       api_token_path: "etc/token.json".to_string(),
+      api_data_fetch_task_interval_min: 15
     }
   }
 }

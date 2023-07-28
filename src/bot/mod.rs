@@ -14,9 +14,10 @@ use teloxide::{
   types::{InlineKeyboardButton, InlineKeyboardMarkup},
   utils::command::BotCommands,
 };
+use tokio::sync::RwLock;
 
 use crate::{
-  api::AsyncSheetsHub,
+  api::{task::PeriodicDataFetcher, AsyncSheetsHub},
   bot::error::CongratulatorError as Error,
   dashboard::{
     score_table::{entities::Person, ScoreTableRecord},
@@ -51,22 +52,32 @@ enum Command {
 type CongratulatorDialogue = Dialogue<State, InMemStorage<State>>;
 type CongratulatorHandlerError = Box<dyn std::error::Error + Send + Sync>;
 type CongratulatorHandlerResult = Result<(), CongratulatorHandlerError>;
+type LockedDashboard = RwLock<Dashboard>;
 
 pub struct Congratulator {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
-  dashboard: Arc<Dashboard>,
+  dashboard: Arc<LockedDashboard>,
+  fetcher: PeriodicDataFetcher,
 }
 
 impl Congratulator {
   pub async fn new(cfg: CongratulatorConfig) -> Result<Self, Error> {
     info!("[Congratulator] Bot is getting created");
-    let hub = AsyncSheetsHub::new(cfg.api_creds_path(), cfg.api_token_path(), cfg.spreadsheet_id()).await?;
-    let dashboard = Arc::new(hub.fetch_dashboard().await?);
 
+    // Create Hub to fetch the data
+    let hub = Arc::new(AsyncSheetsHub::new(cfg.api_creds_path(), cfg.api_token_path(), cfg.spreadsheet_id()).await?);
+
+    // Create shared data - the Dashboard
+    let dashboard = Arc::new(RwLock::new(hub.fetch_dashboard().await?));
+
+    // Create periodic task that will fetch the data periodically
+    let fetcher = PeriodicDataFetcher::schedule(cfg.fetch_data_interval_min(), hub.clone(), dashboard.clone());
+
+    // Create Bot instance
     let bot = Bot::new(cfg.bot_token_str());
-    bot.set_my_commands(Command::bot_commands()).await?;
 
+    bot.set_my_commands(Command::bot_commands()).await?;
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
       .dependencies(dptree::deps![InMemStorage::<State>::new(), dashboard.clone()])
       .default_handler(|upd| async move {
@@ -82,6 +93,7 @@ impl Congratulator {
       bot,
       dispatcher,
       dashboard,
+      fetcher,
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -93,8 +105,8 @@ impl Congratulator {
     self.dispatcher.dispatch().await
   }
 
-  pub fn initialized(&self) -> bool {
-    self.dashboard.tables().is_some()
+  pub async fn initialized(&self) -> bool {
+    self.dashboard.read().await.tables().is_some()
   }
 
   async fn help(bot: Bot, msg: Message) -> CongratulatorHandlerResult {
@@ -120,8 +132,14 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn scores(bot: Bot, msg: Message, dialog: CongratulatorDialogue, dashboard: Arc<Dashboard>) -> CongratulatorHandlerResult {
+  async fn scores(
+    bot: Bot,
+    msg: Message,
+    dialog: CongratulatorDialogue,
+    locked_dashboard: Arc<LockedDashboard>,
+  ) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
+    let dashboard = locked_dashboard.read().await;
     info!("[Congratulator][Scores] Start handling Scores (chat_id={})", chat_id);
     match dashboard.participants() {
       Some(persons) => {
@@ -150,8 +168,9 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn summary(bot: Bot, msg: Message, dashboard: Arc<Dashboard>) -> CongratulatorHandlerResult {
+  async fn summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
+    let dashboard = locked_dashboard.read().await;
     info!("[Congratulator][Summary] Start handling Summary (chat_id={})", chat_id);
     match dashboard.participants() {
       Some(persons) => {
@@ -197,9 +216,10 @@ impl Congratulator {
     bot: Bot,
     dialog: CongratulatorDialogue,
     callback_query: CallbackQuery,
-    dashboard: Arc<Dashboard>,
+    locked_dashboard: Arc<LockedDashboard>,
   ) -> CongratulatorHandlerResult {
     let chat_id = dialog.chat_id();
+    let dashboard = locked_dashboard.read().await;
     info!(
       "[Congratulator][ReceiveSelectedUser] Handling state from User={:?} (chat_id={})",
       callback_query.from, chat_id
@@ -267,5 +287,12 @@ impl Congratulator {
     format!("🫥 __Пользователь__: {}\n{}", person.name(), score_table)
       .replace('-', "\\-")
       .replace('.', "\\.")
+  }
+}
+
+impl Drop for Congratulator {
+  fn drop(&mut self) {
+    debug!("[Congratulator] Dropping ...");
+    self.fetcher.cancel();
   }
 }

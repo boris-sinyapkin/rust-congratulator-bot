@@ -1,6 +1,7 @@
 pub mod error;
 pub mod helpers;
 pub mod requests;
+pub mod task;
 
 use google_sheets4::{
   api::{GetSpreadsheetByDataFilterRequest, GridData, RowData, Spreadsheet},
@@ -8,7 +9,7 @@ use google_sheets4::{
   Sheets,
 };
 use hyper::{client::HttpConnector, Client};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 
 use crate::{
   api::error::{AsyncSheetsHubError as Error, InvalidFetchedData::*},
@@ -45,22 +46,25 @@ async fn auth(
   Ok(authenticator)
 }
 
-pub struct AsyncSheetsHub<'a> {
+pub struct AsyncSheetsHub {
   hub: Sheets<hyper_rustls::HttpsConnector<HttpConnector>>,
-  spreadsheet_id: &'a str,
+  spreadsheet_id: String,
 }
 
-impl<'a> AsyncSheetsHub<'a> {
-  pub async fn new(creds_path: &str, token_path: &str, spreadsheet_id: &'a str) -> Result<AsyncSheetsHub<'a>, Error> {
+impl AsyncSheetsHub {
+  pub async fn new(creds_path: &str, token_path: &str, spreadsheet_id: &str) -> Result<AsyncSheetsHub, Error> {
     let hub = create_hub(creds_path, token_path).await?;
 
-    Ok(AsyncSheetsHub { hub, spreadsheet_id })
+    Ok(AsyncSheetsHub {
+      hub,
+      spreadsheet_id: spreadsheet_id.to_string(),
+    })
   }
 
   pub async fn fetch_dashboard(&self) -> Result<Dashboard, Error> {
     // Fetch titles to identify actual sheet_id corresponding to
     // relevant dashboard data.
-    info!("[AsyncHub] Start fetching dashboard data...");
+    debug!("[AsyncHub] Start fetching dashboard data...");
     let sheets = self
       .fetch_spreadsheet(false)
       .await?
@@ -80,18 +84,18 @@ impl<'a> AsyncSheetsHub<'a> {
     loop {
       match self.fetch_score_table(sheet_id, &request, false).await {
         Ok(score_table) => {
-          debug!(
-            "[AsyncHub] New score table parsed for person with name {}",
+          info!(
+            "[AsyncHub] New score table parsed for person with name '{}'",
             score_table.person().name()
           );
           tables.push(score_table)
         }
         Err(Error::InvalidFetchedData(EmptyPersonNameCell)) => {
-          trace!("[AsyncHub] Empty person name cell was reached - finish parsing loop");
+          warn!("[AsyncHub] Empty person name cell was reached - finish parsing loop");
           break;
         }
         Err(err) => {
-          info!("[AsyncHub] Error has occured while obtaining new score table {:#?}", err);
+          error!("[AsyncHub] Error has occured while obtaining new score table {:#?}", err);
           return Err(err);
         }
       };
@@ -106,7 +110,7 @@ impl<'a> AsyncSheetsHub<'a> {
   }
 
   async fn fetch_score_table(&self, sheet_id: i32, request: &ScoreTableRequest, skip_parse_errors: bool) -> Result<ScoreTable, Error> {
-    info!("[AsyncHub] Start fetching a person table from sheet_id={}...", sheet_id);
+    debug!("[AsyncHub] Start fetching a person table from sheet_id={}...", sheet_id);
     let sheets = self
       .fetch_spreadsheet_with_data_filter(request.build())
       .await?
@@ -171,7 +175,7 @@ impl<'a> AsyncSheetsHub<'a> {
       records.push(new_record);
     }
 
-    info!(
+    debug!(
       "[AsyncHub] Finish fetching a person({:?}) table with size={} from sheet_id={}",
       person,
       records.len(),
@@ -181,25 +185,25 @@ impl<'a> AsyncSheetsHub<'a> {
   }
 
   async fn fetch_spreadsheet(&self, include_grid_data: bool) -> Result<Spreadsheet, Error> {
-    info!(
+    debug!(
       "[AsyncHub] Start fetching spreadsheet (include_grid_data={:})...",
       include_grid_data
     );
     let request = self
       .hub
       .spreadsheets()
-      .get(self.spreadsheet_id)
+      .get(&self.spreadsheet_id)
       .include_grid_data(include_grid_data);
     let (_body, spreadsheet) = request.doit().await?;
-    info!("[AsyncHub] Finish fetching spreadsheet");
+    debug!("[AsyncHub] Finish fetching spreadsheet");
     Ok(spreadsheet)
   }
 
   async fn fetch_spreadsheet_with_data_filter(&self, filter: GetSpreadsheetByDataFilterRequest) -> Result<Spreadsheet, Error> {
-    info!("[AsyncHub] Start fetching spreadsheet with filter data request...");
-    let request = self.hub.spreadsheets().get_by_data_filter(filter, self.spreadsheet_id);
+    debug!("[AsyncHub] Start fetching spreadsheet with filter data request...");
+    let request = self.hub.spreadsheets().get_by_data_filter(filter, &self.spreadsheet_id);
     let (_body, spreadsheet) = request.doit().await?;
-    info!("[AsyncHub] Finish fetching spreadsheet");
+    debug!("[AsyncHub] Finish fetching spreadsheet");
     Ok(spreadsheet)
   }
 }
