@@ -30,3 +30,22 @@ jobs:
           cargo check
           cargo clippy -- -D warnings
           cargo test --all 
+
+    - name: Build Docker image
+      run: docker build -t registry.heroku.com/congratulator/web:latest .
+
+    - name: Docker image info
+      run: docker images
+
+    - name: Login to container registry
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      run: heroku container:login
+
+    - name: Push Docker image
+      run: docker push registry.heroku.com/congratulator/web
+
+    - name: Release
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+      run: heroku container:release -a congratulator web
