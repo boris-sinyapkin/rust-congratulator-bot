@@ -1,5 +1,5 @@
 use google_sheets4::api::{DataFilter, GetSpreadsheetByDataFilterRequest, GridRange};
-use log::{debug, trace};
+use log::trace;
 
 // Build requests for a particular sheet in Google Spreadsheet
 pub struct RequestFactory {

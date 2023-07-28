@@ -2,12 +2,14 @@ use chrono::{DateTime, Datelike, Utc};
 use google_sheets4::api::Sheet;
 use log::{debug, info, trace};
 
+#[allow(dead_code)]
 struct Month {
   ru_name: &'static str,
   eng_name: &'static str,
   number: u8,
 }
 
+#[allow(dead_code)]
 impl Month {
   fn new(number: u8) -> Month {
     match number {
@@ -98,7 +100,7 @@ impl Month {
   }
 }
 
-pub fn get_sheet_id_by_title(sheets: &Vec<Sheet>, title: &str) -> Option<i32> {
+pub fn get_sheet_id_by_title(sheets: &[Sheet], title: &str) -> Option<i32> {
   for sheet in sheets.iter() {
     if let Some(props) = &sheet.properties {
       match &props.title {

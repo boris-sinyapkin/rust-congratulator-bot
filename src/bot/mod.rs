@@ -54,6 +54,7 @@ type CongratulatorHandlerError = Box<dyn std::error::Error + Send + Sync>;
 type CongratulatorHandlerResult = Result<(), CongratulatorHandlerError>;
 type LockedDashboard = RwLock<Dashboard>;
 
+#[allow(dead_code)]
 pub struct Congratulator {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,

@@ -60,7 +60,7 @@ impl ScoreTableRecord {
     &self.percent
   }
 
-  pub fn from_vec(row: &Vec<CellData>) -> Result<ScoreTableRecord, Error> {
+  pub fn from_vec(row: &[CellData]) -> Result<ScoreTableRecord, Error> {
     let mut date: NaiveDate = NaiveDate::default();
     let mut scores = Scores::default();
     let mut total_score = Scores::UNITITIALIZED_SCORE;

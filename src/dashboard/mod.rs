@@ -25,7 +25,7 @@ impl Dashboard {
   }
 
   pub fn initialize(&mut self, score_tables: Vec<ScoreTable>) -> bool {
-    if let None = self.score_tables {
+    if self.score_tables.is_none() {
       trace!("[Dashboard] Initialization done. (tables amount = {})", score_tables.len());
       self.score_tables = Some(score_tables);
       return true;
