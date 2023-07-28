@@ -1,0 +1,8 @@
+**/.dockerignore
+**/.git
+**/.gitignore
+**/.vscode
+**/target
+**/Dockerfile*
+**/etc
+README.md
