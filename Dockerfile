@@ -5,7 +5,7 @@ COPY ./ .
 RUN cargo build --release
 
 # Run the image as a non-root user
-RUN adduser -D myuser
+RUN adduser myuser
 USER myuser
 
 ENV RUST_LOG=info
