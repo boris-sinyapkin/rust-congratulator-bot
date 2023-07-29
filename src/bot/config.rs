@@ -8,15 +8,15 @@ use super::error::CongratulatorError;
 pub struct CongratulatorConfig {
   bot_token: String,
   spreadsheet_id: String,
-  api_creds_path: String,
+  api_creds_json_data: String,
   api_token_path: String,
   api_data_fetch_task_interval_min: u32
 }
 
 impl CongratulatorConfig {
-  pub fn load(path: &str) -> Result<CongratulatorConfig, CongratulatorError> {
-    info!("[Config] Application config is getting loaded from '{}'", path);
-    let serialized = Config::builder().add_source(config::File::with_name(path)).build()?;
+  pub fn load_from_env() -> Result<CongratulatorConfig, CongratulatorError> {
+    info!("[Config] Application config is getting loaded from env");
+    let serialized = Config::builder().add_source(config::Environment::default()).build()?;
     let deserialized = serialized.try_deserialize::<Self>()?;
     info!("[Config] Application config has been loaded");
     Ok(deserialized)
@@ -30,8 +30,8 @@ impl CongratulatorConfig {
     &self.spreadsheet_id
   }
 
-  pub fn api_creds_path(&self) -> &str {
-    &self.api_creds_path
+  pub fn api_creds_json_data(&self) -> &str {
+    &self.api_creds_json_data
   }
 
   pub fn api_token_path(&self) -> &str {
@@ -40,17 +40,5 @@ impl CongratulatorConfig {
 
   pub fn bot_token_str(&self) -> &str {
     &self.bot_token
-  }
-}
-
-impl ::std::default::Default for CongratulatorConfig {
-  fn default() -> Self {
-    Self {
-      bot_token: "Unknown Bot Token".to_string(),
-      spreadsheet_id: "Unknown Spreadsheet Id".to_string(),
-      api_creds_path: "etc/credentials.json".to_string(),
-      api_token_path: "etc/token.json".to_string(),
-      api_data_fetch_task_interval_min: 15
-    }
   }
 }

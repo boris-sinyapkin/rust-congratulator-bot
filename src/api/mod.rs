@@ -19,21 +19,21 @@ use crate::{
 
 use self::requests::ScoreTableRequest;
 
-async fn create_hub(creds_path: &str, token_path: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
+async fn create_hub(creds_json_data: &str, token_path: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
   let connector = hyper_rustls::HttpsConnector::with_native_roots();
   let client = Client::builder().build(connector);
-  let auth = self::auth(creds_path, token_path).await?;
+  let auth = self::auth(creds_json_data, token_path).await?;
 
   Ok(Sheets::new(client, auth))
 }
 
 async fn auth(
-  credentials_path: &str,
+  creds_json_data: &str,
   token_path: &str,
 ) -> Result<Authenticator<google_sheets4::hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
   // Get an ApplicationSecret instance by some means.
   // It contains the `client_id` and `client_secret`, among other things.
-  let secret = oauth2::read_application_secret(credentials_path).await?;
+  let secret = oauth2::parse_application_secret(creds_json_data)?;
 
   // Instantiate the authenticator. It will choose a suitable authentication flow for you,
   // unless you replace `None` with the desired Flow.
@@ -52,8 +52,8 @@ pub struct AsyncSheetsHub {
 }
 
 impl AsyncSheetsHub {
-  pub async fn new(creds_path: &str, token_path: &str, spreadsheet_id: &str) -> Result<AsyncSheetsHub, Error> {
-    let hub = create_hub(creds_path, token_path).await?;
+  pub async fn new(creds_json_data: &str, token_path: &str, spreadsheet_id: &str) -> Result<AsyncSheetsHub, Error> {
+    let hub = create_hub(creds_json_data, token_path).await?;
 
     Ok(AsyncSheetsHub {
       hub,

@@ -1,5 +1,5 @@
-bot_token=<telegram-bot-token>
-spreadsheet_id = <google-spreadsheet-id>
-api_creds_path = 'etc/google_auth_credentials.json'
-api_token_path = 'etc/google_auth_token.json'
-api_data_fetch_task_interval_min = 2
+export BOT_TOKEN=<your-Telegram-API-token>
+export SPREADSHEET_ID=<Google-Spreadsheet-Id>
+export API_CREDS_JSON_DATA=<Google-API-auth-creds>
+export API_TOKEN_PATH=<Google-API-token-path>
+export API_DATA_FETCH_TASK_INTERVAL_MIN=<Data-fetch-time-interval>

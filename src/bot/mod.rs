@@ -67,7 +67,7 @@ impl Congratulator {
     info!("[Congratulator] Bot is getting created");
 
     // Create Hub to fetch the data
-    let hub = Arc::new(AsyncSheetsHub::new(cfg.api_creds_path(), cfg.api_token_path(), cfg.spreadsheet_id()).await?);
+    let hub = Arc::new(AsyncSheetsHub::new(cfg.api_creds_json_data(), cfg.api_token_path(), cfg.spreadsheet_id()).await?);
 
     // Create shared data - the Dashboard
     let dashboard = Arc::new(RwLock::new(hub.fetch_dashboard().await?));
