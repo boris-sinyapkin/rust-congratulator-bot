@@ -270,7 +270,7 @@ impl Congratulator {
       }
     }
 
-    let _ = bot.answer_callback_query(callback_query.id);
+    bot.answer_callback_query(callback_query.id).send().await?;
     info!("[Congratulator][ReceiveSelectedUser] Finished handling (chat_id={})", chat_id);
     Ok(())
   }
