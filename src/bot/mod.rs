@@ -203,8 +203,29 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn invalid_state(_bot: Bot, msg: Message) -> CongratulatorHandlerResult {
-    warn!("Called invalid state callback with msg={:#?}", msg);
+  async fn unhandled_message(_bot: Bot, msg: Message) -> CongratulatorHandlerResult {
+    warn!("Called unhandled_message() callback with msg={:?}", msg);
+    Ok(())
+  }
+
+  async fn my_chat_member_update_handler(bot: Bot, update: ChatMemberUpdated) -> CongratulatorHandlerResult {
+    let ChatMemberUpdated {
+      chat,
+      from,
+      new_chat_member,
+      ..
+    } = &update;
+    let chat_id = chat.id;
+
+    info!("[Congratulator][ChatMemberUpdated] Start handling update (chat_id={})", chat_id);
+    let msg = if new_chat_member.is_member() {
+      format!("Благодаря *{}* я теперь в этом чатике\\. Большое спасибо\\!", from.full_name())
+    } else {
+      debug!("[Congratulator][ChatMemberUpdated] The update was unhandled {:?}", update);
+      return Ok(());
+    };
+
+    bot.send_message(chat_id, msg).parse_mode(ParseMode::MarkdownV2).await?;
     Ok(())
   }
 
@@ -267,14 +288,17 @@ impl Congratulator {
       .branch(case![Command::Scores].endpoint(Congratulator::scores))
       .branch(case![Command::Summary].endpoint(Congratulator::summary));
 
+    let updates_handler = Update::filter_my_chat_member().branch(dptree::endpoint(Congratulator::my_chat_member_update_handler));
+
     let message_handler = Update::filter_message()
       .branch(command_handler)
-      .branch(dptree::endpoint(Congratulator::invalid_state));
+      .branch(dptree::endpoint(Congratulator::unhandled_message));
 
     let callback_query_handler =
       Update::filter_callback_query().branch(case![State::ReceiveSelectedUser].endpoint(Congratulator::receive_user_selected));
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>()
+      .branch(updates_handler)
       .branch(message_handler)
       .branch(callback_query_handler)
   }
