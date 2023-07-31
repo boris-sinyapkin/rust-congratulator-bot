@@ -203,14 +203,8 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn invalid_state(bot: Bot, msg: Message) -> CongratulatorHandlerResult {
-    bot
-      .send_message(
-        msg.chat.id,
-        "Either I can't handle this message so far😥 or you probably need \
-        to select something from the list above👆🏻🙏😥 Type /help to see the usage.",
-      )
-      .await?;
+  async fn invalid_state(_bot: Bot, msg: Message) -> CongratulatorHandlerResult {
+    warn!("Called invalid state callback with msg={:#?}", msg);
     Ok(())
   }
 
