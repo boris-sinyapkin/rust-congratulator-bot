@@ -1,5 +1,4 @@
 export BOT_TOKEN=<your-Telegram-API-token>
 export SPREADSHEET_ID=<Google-Spreadsheet-Id>
-export API_CREDS_JSON_DATA=<Google-API-auth-creds>
-export API_TOKEN_PATH=<Google-API-token-path>
+export API_SERVICE_KEY_JSON_DATA=<Google-API-service-account-JSON-key-text>
 export API_DATA_FETCH_TASK_INTERVAL_MIN=<Data-fetch-time-interval>
