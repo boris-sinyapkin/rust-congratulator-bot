@@ -31,7 +31,6 @@ use self::config::CongratulatorConfig;
 pub enum State {
   #[default]
   Default,
-  ReceiveSelectedUser,
 }
 
 #[derive(BotCommands, Clone, Debug)]
@@ -137,7 +136,6 @@ impl Congratulator {
   async fn scores(
     bot: Bot,
     msg: Message,
-    dialog: CongratulatorDialogue,
     locked_dashboard: Arc<LockedDashboard>,
   ) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
@@ -158,7 +156,6 @@ impl Congratulator {
           .parse_mode(ParseMode::MarkdownV2)
           .reply_markup(InlineKeyboardMarkup::new([choices]))
           .await?;
-        dialog.update(State::ReceiveSelectedUser).await?;
       }
       None => {
         warn!("[Congratulator][Scores] The participants were not found");
@@ -273,7 +270,6 @@ impl Congratulator {
       }
     }
 
-    dialog.update(State::Default).await?;
     info!("[Congratulator][ReceiveSelectedUser] Finished handling (chat_id={})", chat_id);
     Ok(())
   }
@@ -295,7 +291,7 @@ impl Congratulator {
       .branch(dptree::endpoint(Congratulator::unhandled_message));
 
     let callback_query_handler =
-      Update::filter_callback_query().branch(case![State::ReceiveSelectedUser].endpoint(Congratulator::receive_user_selected));
+      Update::filter_callback_query().branch(case![State::Default].endpoint(Congratulator::receive_user_selected));
 
     dialogue::enter::<Update, InMemStorage<State>, State, _>()
       .branch(updates_handler)
