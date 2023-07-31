@@ -19,29 +19,18 @@ use crate::{
 
 use self::requests::ScoreTableRequest;
 
-async fn create_hub(creds_json_data: &str, token_path: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
+async fn create_hub(service_key: &str) -> Result<Sheets<hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
   let connector = hyper_rustls::HttpsConnector::with_native_roots();
   let client = Client::builder().build(connector);
-  let auth = self::auth(creds_json_data, token_path).await?;
+  let auth = self::auth(service_key).await?;
 
   Ok(Sheets::new(client, auth))
 }
 
-async fn auth(
-  creds_json_data: &str,
-  token_path: &str,
-) -> Result<Authenticator<google_sheets4::hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
-  // Get an ApplicationSecret instance by some means.
-  // It contains the `client_id` and `client_secret`, among other things.
-  let secret = oauth2::parse_application_secret(creds_json_data)?;
-
-  // Instantiate the authenticator. It will choose a suitable authentication flow for you,
-  // unless you replace `None` with the desired Flow.
-  // Provide your own `AuthenticatorDelegate` to adjust the way it operates and get feedback about
-  // what's going on. You probably want to bring in your own `TokenStorage` to persist tokens and
-  // retrieve them from storage.
-  let auth_builder = oauth2::InstalledFlowAuthenticator::builder(secret, oauth2::InstalledFlowReturnMethod::HTTPRedirect);
-  let authenticator = auth_builder.persist_tokens_to_disk(token_path).build().await?;
+async fn auth(service_key: &str) -> Result<Authenticator<google_sheets4::hyper_rustls::HttpsConnector<HttpConnector>>, Error> {
+  let secret = oauth2::parse_service_account_key(service_key)?;
+  let auth_builder = oauth2::ServiceAccountAuthenticator::builder(secret);
+  let authenticator = auth_builder.build().await?;
 
   Ok(authenticator)
 }
@@ -52,8 +41,8 @@ pub struct AsyncSheetsHub {
 }
 
 impl AsyncSheetsHub {
-  pub async fn new(creds_json_data: &str, token_path: &str, spreadsheet_id: &str) -> Result<AsyncSheetsHub, Error> {
-    let hub = create_hub(creds_json_data, token_path).await?;
+  pub async fn new(service_key: &str, spreadsheet_id: &str) -> Result<AsyncSheetsHub, Error> {
+    let hub = create_hub(service_key).await?;
 
     Ok(AsyncSheetsHub {
       hub,

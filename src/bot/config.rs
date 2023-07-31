@@ -8,8 +8,7 @@ use super::error::CongratulatorError;
 pub struct CongratulatorConfig {
   bot_token: String,
   spreadsheet_id: String,
-  api_creds_json_data: String,
-  api_token_path: String,
+  api_service_key_json_data: String,
   api_data_fetch_task_interval_min: u32
 }
 
@@ -30,12 +29,8 @@ impl CongratulatorConfig {
     &self.spreadsheet_id
   }
 
-  pub fn api_creds_json_data(&self) -> &str {
-    &self.api_creds_json_data
-  }
-
-  pub fn api_token_path(&self) -> &str {
-    &self.api_token_path
+  pub fn api_service_key(&self) -> &str {
+    &self.api_service_key_json_data
   }
 
   pub fn bot_token_str(&self) -> &str {
