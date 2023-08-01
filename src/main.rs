@@ -1,6 +1,7 @@
 pub mod api;
 pub mod bot;
 pub mod dashboard;
+pub mod helpers;
 
 use bot::Congratulator;
 use bot::{config::CongratulatorConfig, error::CongratulatorError};

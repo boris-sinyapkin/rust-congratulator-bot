@@ -1,7 +1,5 @@
 pub mod error;
-pub mod helpers;
 pub mod requests;
-pub mod task;
 
 use google_sheets4::{
   api::{GetSpreadsheetByDataFilterRequest, GridData, RowData, Spreadsheet},
@@ -15,6 +13,7 @@ use crate::{
   api::error::{AsyncSheetsHubError as Error, InvalidFetchedData::*},
   api::requests::RequestFactory,
   dashboard::{score_table::entities::Person, score_table::ScoreTable, score_table::ScoreTableRecord, Dashboard},
+  helpers,
 };
 
 use self::requests::ScoreTableRequest;

@@ -1,5 +1,6 @@
 pub mod config;
 pub mod error;
+pub mod tasks;
 
 use itertools::free::join;
 use log::{debug, error, info, trace, warn};
@@ -17,7 +18,7 @@ use teloxide::{
 use tokio::sync::RwLock;
 
 use crate::{
-  api::{task::PeriodicDataFetcher, AsyncSheetsHub},
+  api::AsyncSheetsHub,
   bot::error::CongratulatorError as Error,
   dashboard::{
     score_table::{entities::Person, ScoreTableRecord},
@@ -25,7 +26,7 @@ use crate::{
   },
 };
 
-use self::config::CongratulatorConfig;
+use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
 
 #[derive(Clone, Default)]
 pub enum State {
@@ -133,11 +134,7 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn scores(
-    bot: Bot,
-    msg: Message,
-    locked_dashboard: Arc<LockedDashboard>,
-  ) -> CongratulatorHandlerResult {
+  async fn scores(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
     let dashboard = locked_dashboard.read().await;
     info!("[Congratulator][Scores] Start handling Scores (chat_id={})", chat_id);

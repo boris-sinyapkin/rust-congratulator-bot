@@ -5,7 +5,7 @@ use log::{debug, error, info, trace};
 use tokio::sync::RwLock;
 use tokio_schedule::{every, Job};
 
-use crate::{api, dashboard::Dashboard};
+use crate::{dashboard::Dashboard, helpers};
 
 use super::AsyncSheetsHub;
 
@@ -35,7 +35,7 @@ impl PeriodicDataFetcher {
   }
 
   async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<RwLock<Dashboard>>) {
-    info!("[PeriodicDataFetcher] Task has started {}", api::helpers::current_time());
+    info!("[PeriodicDataFetcher] Task has started {}", helpers::current_time());
     debug!("[PeriodicDataFetcher] Fetching the latest data...");
     let latest_dashboard = match hub.fetch_dashboard().await {
       Ok(data) => {
@@ -58,6 +58,6 @@ impl PeriodicDataFetcher {
       *locked_dashboard = latest_dashboard;
       trace!("[PeriodicDataFetcher] New dashboard has been successfully fetched and replaced with the old one");
     }
-    info!("[PeriodicDataFetcher] Task has finished {}", api::helpers::current_time());
+    info!("[PeriodicDataFetcher] Task has finished {}", helpers::current_time());
   }
 }
