@@ -1,6 +1,7 @@
 use config::Config;
 use log::info;
 use serde::{Deserialize, Serialize};
+use teloxide::types::ChatId;
 
 use super::error::CongratulatorError;
 
@@ -8,6 +9,7 @@ use super::error::CongratulatorError;
 pub struct CongratulatorConfig {
   bot_token: String,
   spreadsheet_id: String,
+  notify_chat_id: i64,
   api_service_key_json_data: String,
   api_data_fetch_task_interval_min: u32
 }
@@ -35,5 +37,9 @@ impl CongratulatorConfig {
 
   pub fn bot_token_str(&self) -> &str {
     &self.bot_token
+  }
+
+  pub fn notify_chat_id(&self) -> ChatId {
+    ChatId(self.notify_chat_id)
   }
 }

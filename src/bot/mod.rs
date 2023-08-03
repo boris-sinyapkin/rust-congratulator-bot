@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 
 use crate::{
   api::AsyncSheetsHub,
-  bot::error::CongratulatorError as Error,
+  bot::{error::CongratulatorError as Error, tasks::PeriodicNotifier},
   dashboard::{
     score_table::{entities::Person, ScoreTableRecord},
     Dashboard,
@@ -60,6 +60,7 @@ pub struct Congratulator {
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
   fetcher: PeriodicDataFetcher,
+  notifiers: Vec<PeriodicNotifier>,
 }
 
 impl Congratulator {
@@ -73,10 +74,19 @@ impl Congratulator {
     let dashboard = Arc::new(RwLock::new(hub.fetch_dashboard().await?));
 
     // Create periodic task that will fetch the data periodically
+    // Schedule every amount of minutes specified in API_DATA_FETCH_TASK_INTERVAL_MIN env variable
     let fetcher = PeriodicDataFetcher::schedule(cfg.fetch_data_interval_min(), hub.clone(), dashboard.clone());
 
     // Create Bot instance
     let bot = Bot::new(cfg.bot_token_str());
+
+    // Create periodic tasks that send a particular message at some time
+    let notifiers = vec![PeriodicNotifier::schedule(
+      bot.clone(),
+      "Fill in the table 📋".to_string(),
+      cfg.notify_chat_id(),
+      (18, 0, 0), // MSK = UTC+3
+    )];
 
     bot.set_my_commands(Command::bot_commands()).await?;
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
@@ -95,6 +105,7 @@ impl Congratulator {
       dispatcher,
       dashboard,
       fetcher,
+      notifiers,
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -308,5 +319,8 @@ impl Drop for Congratulator {
   fn drop(&mut self) {
     debug!("[Congratulator] Dropping ...");
     self.fetcher.cancel();
+    for notifier in self.notifiers.iter() {
+      notifier.cancel()
+    }
   }
 }
