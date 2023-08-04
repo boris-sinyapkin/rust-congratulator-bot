@@ -1,5 +1,6 @@
+use chrono::NaiveDate;
+
 use super::{score_table::entities::Person, Dashboard, ScoreTable, ScoreTableRecord};
-use crate::helpers;
 
 pub struct DashboardAnalyzer<'a> {
   dashboard: &'a Dashboard,
@@ -24,11 +25,9 @@ impl<'a> DashboardAnalyzer<'a> {
     }
   }
 
-  pub fn today_filled_score_table_record(&self, person: &Person) -> Option<&'a ScoreTableRecord> {
+  pub fn find_filled_score_table_record(&self, person: &Person, date: &NaiveDate) -> Option<&'a ScoreTableRecord> {
     match self.find_table(person) {
-      Some(table) => table
-        .by_date(&helpers::current_time().date_naive())
-        .filter(|&record| record.has_total()),
+      Some(table) => table.by_date(date).filter(|&record| record.has_total()),
       _ => None,
     }
   }

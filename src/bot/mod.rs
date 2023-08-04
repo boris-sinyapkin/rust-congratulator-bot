@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 pub mod tasks;
 
+use chrono::NaiveDate;
 use itertools::free::join;
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -24,6 +25,7 @@ use crate::{
     score_table::{entities::Person, ScoreTableRecord},
     Dashboard,
   },
+  helpers::current_time,
 };
 
 use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
@@ -45,8 +47,10 @@ enum Command {
   Participants,
   #[command(description = "show scores of a participant")]
   Scores,
-  #[command(description = "show score summary for current date")]
-  Summary,
+  #[command(description = "show score summary for today")]
+  TodaySummary,
+  #[command(description = "show score summary for yesterday")]
+  YesterdaySummary,
 }
 
 type CongratulatorDialogue = Dialogue<State, InMemStorage<State>>;
@@ -175,10 +179,26 @@ impl Congratulator {
     Ok(())
   }
 
-  async fn summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
+  async fn today_summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
+    Congratulator::summary(bot, msg, locked_dashboard, &current_time().date_naive()).await
+  }
+
+  async fn yesterday_summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
+    if let Some(yesterday) = current_time().date_naive().pred_opt() {
+      Congratulator::summary(bot, msg, locked_dashboard, &yesterday).await?
+    } else {
+      error!("Unable to handle YesterdaySummary: can't derive the date for yesterday");
+    }
+    Ok(())
+  }
+
+  async fn summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>, by_date: &NaiveDate) -> CongratulatorHandlerResult {
     let chat_id = msg.chat.id;
     let dashboard = locked_dashboard.read().await;
-    info!("[Congratulator][Summary] Start handling Summary (chat_id={})", chat_id);
+    info!(
+      "[Congratulator][Summary] Start handling Summary (chat_id={}) for date='{}'",
+      chat_id, by_date
+    );
     match dashboard.participants() {
       Some(persons) => {
         debug!("[Congratulator][Summary] Found {} participants", persons.len());
@@ -186,13 +206,17 @@ impl Congratulator {
           .iter()
           .filter_map(|p| {
             dashboard
-              .today_filled_score_table_record(p)
+              .find_filled_score_table_record(p, by_date)
               .map(|rec| format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji()))
           })
           .collect();
 
         let msg = if summary.is_empty() {
-          "Сегодня пока еще *ни один* из участников таблицу не заполнял 😩😭".to_string()
+          format!(
+            "*{}* пока еще *ни один* из участников таблицу не заполнял 😩😭",
+            by_date.format("%d.%m.%Y")
+          )
+          .replace('.', "\\.")
         } else {
           join(summary, "\n")
         };
@@ -291,7 +315,9 @@ impl Congratulator {
       .branch(case![Command::Dice].endpoint(Congratulator::dice))
       .branch(case![Command::Participants].endpoint(Congratulator::participants))
       .branch(case![Command::Scores].endpoint(Congratulator::scores))
-      .branch(case![Command::Summary].endpoint(Congratulator::summary));
+      .branch(case![Command::TodaySummary].endpoint(Congratulator::today_summary))
+      .branch(case![Command::YesterdaySummary])
+      .endpoint(Congratulator::yesterday_summary);
 
     let updates_handler = Update::filter_my_chat_member().branch(dptree::endpoint(Congratulator::my_chat_member_update_handler));
 

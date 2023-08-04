@@ -3,6 +3,7 @@ use self::{
   score_table::ScoreTableRecord,
   score_table::{entities::Person, ScoreTable},
 };
+use chrono::NaiveDate;
 use log::{error, trace};
 
 pub mod analyzer;
@@ -50,8 +51,8 @@ impl Dashboard {
     self.build_analyzer().last_filled_score_table_record(person)
   }
 
-  pub fn today_filled_score_table_record(&self, person: &Person) -> Option<&ScoreTableRecord> {
-    self.build_analyzer().today_filled_score_table_record(person)
+  pub fn find_filled_score_table_record(&self, person: &Person, date: &NaiveDate) -> Option<&ScoreTableRecord> {
+    self.build_analyzer().find_filled_score_table_record(person, date)
   }
 
   /// Return list of the participants
