@@ -20,7 +20,10 @@ use tokio::sync::RwLock;
 
 use crate::{
   api::AsyncSheetsHub,
-  bot::{error::CongratulatorError as Error, tasks::PeriodicNotifier},
+  bot::{
+    error::CongratulatorError as Error,
+    tasks::{EveryDayTime, PeriodicNotifier},
+  },
   dashboard::{
     score_table::{entities::Person, ScoreTableRecord},
     Dashboard,
@@ -89,7 +92,7 @@ impl Congratulator {
       bot.clone(),
       "Fill in the table 📋".to_string(),
       cfg.notify_chat_id(),
-      (18, 0, 0), // MSK = UTC+3
+      EveryDayTime::new(18, 0, 0), // MSK = UTC+3
     )];
 
     bot.set_my_commands(Command::bot_commands()).await?;
@@ -104,7 +107,7 @@ impl Congratulator {
       .enable_ctrlc_handler()
       .build();
 
-    let bot = Congratulator {
+    let congratulator = Congratulator {
       bot,
       dispatcher,
       dashboard,
@@ -113,7 +116,7 @@ impl Congratulator {
     };
 
     info!("[Congratulator] Bot successfully created");
-    Ok(bot)
+    Ok(congratulator)
   }
 
   pub async fn listen(&mut self) {

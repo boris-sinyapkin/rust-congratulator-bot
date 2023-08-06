@@ -63,12 +63,28 @@ impl PeriodicDataFetcher {
   }
 }
 
+pub struct EveryDayTime {
+  h: u32,
+  m: u32,
+  s: u32,
+}
+
+impl EveryDayTime {
+  pub fn new(h: u32, m: u32, s: u32) -> Self {
+    Self { h, m, s }
+  }
+  pub fn as_tuple(&self) -> (u32, u32, u32) {
+    (self.h, self.m, self.s)
+  }
+}
+
 pub struct PeriodicNotifier {
+  when: EveryDayTime,
   task_handle: tokio::task::JoinHandle<()>,
 }
 
 impl PeriodicNotifier {
-  pub fn schedule(bot: Bot, text: String, chat_id: ChatId, when: (u32, u32, u32)) -> Self {
+  pub fn schedule(bot: Bot, text: String, chat_id: ChatId, when: EveryDayTime) -> Self {
     info!("[PeriodicNotifier] Scheduling the task");
     let task = move || {
       let cloned_bot = bot.clone();
@@ -77,9 +93,10 @@ impl PeriodicNotifier {
         PeriodicNotifier::do_notify(cloned_bot, cloned_text, chat_id).await;
       }
     };
-    let (h, m, s) = when;
+    let (h, m, s) = when.as_tuple();
     let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
     Self {
+      when,
       task_handle: tokio::spawn(task_future),
     }
   }
@@ -94,6 +111,10 @@ impl PeriodicNotifier {
       ),
     }
     info!("[PeriodicNotifier] Task has finished at {}", helpers::current_time());
+  }
+
+  pub fn when(&self) -> &EveryDayTime {
+    &self.when
   }
 
   pub fn cancel(&self) {
