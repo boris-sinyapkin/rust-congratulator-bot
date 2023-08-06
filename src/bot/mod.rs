@@ -299,7 +299,10 @@ impl Congratulator {
           person
         );
         bot
-          .send_message(chat_id, "За последний месяц не было заполнено *ни одного* дня 😢")
+          .send_message(
+            chat_id,
+            format!("*{}* не заполнил\\(а\\) *ни одного* дня за последний месяц 😢", person.name()),
+          )
           .parse_mode(ParseMode::MarkdownV2)
           .await?;
       }
