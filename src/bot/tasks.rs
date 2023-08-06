@@ -10,6 +10,8 @@ use crate::{dashboard::Dashboard, helpers};
 
 use super::AsyncSheetsHub;
 
+/// This task periodically downloads latest data from Sheets through the AsyncHub instance,
+/// and updates the Dashboard through RwLock
 pub struct PeriodicDataFetcher {
   task_handle: tokio::task::JoinHandle<()>,
 }
@@ -78,6 +80,7 @@ impl EveryDayTime {
   }
 }
 
+/// This task periodically (once a day) sends text to the specified 'chat_id'
 pub struct PeriodicNotifier {
   when: EveryDayTime,
   task_handle: tokio::task::JoinHandle<()>,
