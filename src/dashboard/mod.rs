@@ -4,7 +4,7 @@ use self::{
   score_table::{entities::Person, ScoreTable},
 };
 use chrono::NaiveDate;
-use log::{error, trace};
+use log::{debug, error, trace, warn};
 
 pub mod analyzer;
 pub mod score_table;
@@ -39,6 +39,23 @@ impl Dashboard {
     self.score_tables.as_ref()
   }
 
+  pub fn summary(&self, by_date: &NaiveDate) -> Result<Vec<String>, DashboardError> {
+    if let Some(persons) = self.participants() {
+      debug!("[Dashboard][Summary] Found {} participants", persons.len());
+      let summary: Vec<String> = persons
+        .iter()
+        .filter_map(|p| {
+          self
+            .find_filled_score_table_record(p, by_date)
+            .map(|rec| format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji()))
+        })
+        .collect();
+      return Ok(summary);
+    }
+    warn!("[Dashboard][Summary] The participants were not found");
+    Err(DashboardError::EmptyParticipants)
+  }
+
   pub fn find_table(&self, person: &Person) -> Option<&ScoreTable> {
     self.build_analyzer().find_table(person)
   }
@@ -67,4 +84,9 @@ impl Dashboard {
   pub fn build_analyzer(&self) -> DashboardAnalyzer {
     DashboardAnalyzer::new(self)
   }
+}
+
+#[derive(Debug)]
+pub enum DashboardError {
+  EmptyParticipants
 }

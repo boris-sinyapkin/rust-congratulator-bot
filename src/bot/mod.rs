@@ -24,11 +24,8 @@ use crate::{
     error::CongratulatorError as Error,
     tasks::{EveryDayTime, PeriodicNotifier},
   },
-  dashboard::{
-    score_table::{entities::Person, ScoreTableRecord},
-    Dashboard,
-  },
-  helpers::current_time,
+  dashboard::{Dashboard, DashboardError},
+  helpers::{self, current_time},
 };
 
 use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
@@ -202,31 +199,13 @@ impl Congratulator {
       "[Congratulator][Summary] Start handling Summary (chat_id={}) for date='{}'",
       chat_id, by_date
     );
-    match dashboard.participants() {
-      Some(persons) => {
-        debug!("[Congratulator][Summary] Found {} participants", persons.len());
-        let summary: Vec<String> = persons
-          .iter()
-          .filter_map(|p| {
-            dashboard
-              .find_filled_score_table_record(p, by_date)
-              .map(|rec| format!("{} молодец на {} {}", p.name(), rec.percent(), rec.percent().emoji()))
-          })
-          .collect();
 
-        let msg = if summary.is_empty() {
-          format!(
-            "*{}* пока еще *ни один* из участников таблицу не заполнял 😩😭",
-            by_date.format("%d.%m.%Y")
-          )
-          .replace('.', "\\.")
-        } else {
-          join(summary, "\n")
-        };
-
+    match dashboard.summary(by_date) {
+      Ok(summary) => {
+        let msg = helpers::format_summary_msg(&summary, by_date);
         bot.send_message(chat_id, msg).parse_mode(ParseMode::MarkdownV2).await?;
       }
-      None => {
+      Err(DashboardError::EmptyParticipants) => {
         warn!("[Congratulator][Summary] The participants were not found");
         bot.send_message(chat_id, "Список пользователей пуст 😩😭").await?;
       }
@@ -289,7 +268,7 @@ impl Congratulator {
       Some(last_record) => {
         trace!("[Congratulator][ReceiveSelectedUser] Found {:?}", last_record);
         bot
-          .send_message(chat_id, Congratulator::format_user_score_msg(last_record, person))
+          .send_message(chat_id, helpers::format_user_score_msg(last_record, person))
           .parse_mode(ParseMode::MarkdownV2)
           .await?;
       }
@@ -338,12 +317,6 @@ impl Congratulator {
       .branch(updates_handler)
       .branch(message_handler)
       .branch(callback_query_handler)
-  }
-
-  fn format_user_score_msg(score_table: &ScoreTableRecord, person: &Person) -> String {
-    format!("🫥 __Пользователь__: {}\n{}", person.name(), score_table)
-      .replace('-', "\\-")
-      .replace('.', "\\.")
   }
 }
 

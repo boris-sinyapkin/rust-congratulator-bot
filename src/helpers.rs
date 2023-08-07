@@ -1,5 +1,7 @@
-use chrono::{DateTime, Datelike, Utc};
+use crate::dashboard::score_table::{entities::Person, ScoreTableRecord};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use google_sheets4::api::Sheet;
+use itertools::free::join;
 use log::{debug, info, trace};
 
 #[allow(dead_code)]
@@ -149,4 +151,22 @@ pub fn derive_title_name() -> String {
   info!("[API] Derived relevant title name = {:?}", result);
 
   result
+}
+
+pub fn format_user_score_msg(score_table: &ScoreTableRecord, person: &Person) -> String {
+  format!("🫥 __Пользователь__: {}\n{}", person.name(), score_table)
+    .replace('-', "\\-")
+    .replace('.', "\\.")
+}
+
+pub fn format_summary_msg(summary: &Vec<String>, by_date: &NaiveDate) -> String {
+  if !summary.is_empty() {
+    join(summary, "\n")
+  } else {
+    format!(
+      "*{}* пока еще *ни один* из участников таблицу не заполнял 😩😭",
+      by_date.format("%d.%m.%Y")
+    )
+    .replace('.', "\\.")
+  }
 }
