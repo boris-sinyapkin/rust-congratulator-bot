@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{NaiveDate, Utc};
+use chrono::Utc;
 use log::{debug, error, info, trace, warn};
 use teloxide::{
   payloads::SendMessageSetters,
@@ -149,23 +149,18 @@ impl EveryDayTask for PeriodicNotifier {
 pub struct PeriodicSummarySender {
   bot: Bot,
   chat_id: ChatId,
-  by_date: NaiveDate,
   dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicSummarySender {
   pub fn new(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) -> Self {
-    Self {
-      bot,
-      chat_id,
-      dashboard,
-      by_date: helpers::current_time().date_naive(),
-    }
+    Self { bot, chat_id, dashboard }
   }
 
-  pub async fn send_summary(bot: Bot, dashboard: Arc<LockedDashboard>, by_date: NaiveDate, chat_id: ChatId) {
+  pub async fn send_summary(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) {
     info!("[PeriodicSummarySender] Task has started at {}", helpers::current_time());
     let locked_dashboard = dashboard.read().await;
+    let by_date = helpers::current_time().date_naive(); // always send "today" summary
     match locked_dashboard.summary(&by_date) {
       Ok(summary) => {
         let msg = helpers::format_summary_msg(&summary, &by_date);
@@ -186,14 +181,13 @@ impl EveryDayTask for PeriodicSummarySender {
 
     let bot = self.bot.clone();
     let chat_id = self.chat_id;
-    let by_date = self.by_date;
     let dashboard = self.dashboard.clone();
 
     let task = move || {
       let cloned_bot = bot.clone();
       let cloned_dashboard = dashboard.clone();
       async move {
-        PeriodicSummarySender::send_summary(cloned_bot, cloned_dashboard, by_date, chat_id).await;
+        PeriodicSummarySender::send_summary(cloned_bot, cloned_dashboard, chat_id).await;
       }
     };
 
