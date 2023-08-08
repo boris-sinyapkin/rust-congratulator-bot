@@ -22,7 +22,7 @@ use crate::{
   api::AsyncSheetsHub,
   bot::{
     error::CongratulatorError as Error,
-    tasks::{EveryDayTime, PeriodicNotifier},
+    tasks::{EveryDayTask, EveryDayTime, PeriodicNotifier, PeriodicSummarySender},
   },
   dashboard::{Dashboard, DashboardError},
   helpers::{self, current_time},
@@ -64,7 +64,7 @@ pub struct Congratulator {
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
   fetcher: PeriodicDataFetcher,
-  notifiers: Vec<PeriodicNotifier>,
+  handlers: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl Congratulator {
@@ -85,12 +85,14 @@ impl Congratulator {
     let bot = Bot::new(cfg.bot_token_str());
 
     // Create periodic tasks that send a particular message at some time
-    let notifiers = vec![PeriodicNotifier::schedule(
-      bot.clone(),
-      "Fill in the table 📋".to_string(),
-      cfg.notify_chat_id(),
-      EveryDayTime::new(18, 0, 0), // MSK = UTC+3
-    )];
+    let target_chat_id = cfg.notify_chat_id();
+    let notify = PeriodicNotifier::new(bot.clone(), "Fill in the table 📋".to_string(), target_chat_id);
+    let sender = PeriodicSummarySender::new(bot.clone(), dashboard.clone(), target_chat_id);
+
+    let handlers = vec![
+      notify.schedule(EveryDayTime::new(18, 0, 0)), // 21:00 UTC+3
+      sender.schedule(EveryDayTime::new(20, 0, 0)), // 23:00 UTC+3
+    ];
 
     bot.set_my_commands(Command::bot_commands()).await?;
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
@@ -109,7 +111,7 @@ impl Congratulator {
       dispatcher,
       dashboard,
       fetcher,
-      notifiers,
+      handlers,
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -324,8 +326,8 @@ impl Drop for Congratulator {
   fn drop(&mut self) {
     debug!("[Congratulator] Dropping ...");
     self.fetcher.cancel();
-    for notifier in self.notifiers.iter() {
-      notifier.cancel()
+    for h in self.handlers.iter() {
+      h.abort()
     }
   }
 }

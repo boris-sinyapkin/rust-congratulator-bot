@@ -1,14 +1,22 @@
 use std::sync::Arc;
 
-use chrono::Utc;
-use log::{debug, error, info, trace};
-use teloxide::{requests::Requester, types::ChatId, Bot};
+use chrono::{NaiveDate, Utc};
+use log::{debug, error, info, trace, warn};
+use teloxide::{
+  payloads::SendMessageSetters,
+  requests::Requester,
+  types::{ChatId, ParseMode},
+  Bot,
+};
 use tokio::sync::RwLock;
 use tokio_schedule::{every, Job};
 
-use crate::{dashboard::Dashboard, helpers};
+use crate::{
+  dashboard::{Dashboard, DashboardError},
+  helpers,
+};
 
-use super::AsyncSheetsHub;
+use super::{AsyncSheetsHub, LockedDashboard};
 
 /// This task periodically downloads latest data from Sheets through the AsyncHub instance,
 /// and updates the Dashboard through RwLock
@@ -65,6 +73,10 @@ impl PeriodicDataFetcher {
   }
 }
 
+pub trait EveryDayTask {
+  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()>;
+}
+
 pub struct EveryDayTime {
   h: u32,
   m: u32,
@@ -80,28 +92,22 @@ impl EveryDayTime {
   }
 }
 
+impl std::fmt::Display for EveryDayTime {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}:{}:{}", self.h, self.m, self.s)
+  }
+}
+
 /// This task periodically (once a day) sends text to the specified 'chat_id'
 pub struct PeriodicNotifier {
-  when: EveryDayTime,
-  task_handle: tokio::task::JoinHandle<()>,
+  bot: Bot,
+  text: String,
+  chat_id: ChatId,
 }
 
 impl PeriodicNotifier {
-  pub fn schedule(bot: Bot, text: String, chat_id: ChatId, when: EveryDayTime) -> Self {
-    info!("[PeriodicNotifier] Scheduling the task");
-    let task = move || {
-      let cloned_bot = bot.clone();
-      let cloned_text = text.clone();
-      async move {
-        PeriodicNotifier::do_notify(cloned_bot, cloned_text, chat_id).await;
-      }
-    };
-    let (h, m, s) = when.as_tuple();
-    let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
-    Self {
-      when,
-      task_handle: tokio::spawn(task_future),
-    }
+  pub fn new(bot: Bot, text: String, chat_id: ChatId) -> Self {
+    Self { bot, text, chat_id }
   }
 
   async fn do_notify(bot: Bot, text: String, chat_id: ChatId) {
@@ -115,13 +121,85 @@ impl PeriodicNotifier {
     }
     info!("[PeriodicNotifier] Task has finished at {}", helpers::current_time());
   }
+}
 
-  pub fn when(&self) -> &EveryDayTime {
-    &self.when
+impl EveryDayTask for PeriodicNotifier {
+  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
+    info!("[PeriodicNotifier] Scheduling every day task for {}", when);
+
+    let bot = self.bot.clone();
+    let text = self.text.clone();
+    let chat_id = self.chat_id;
+
+    let task = move || {
+      let cloned_bot = bot.clone();
+      let cloned_text = text.clone();
+      async move {
+        PeriodicNotifier::do_notify(cloned_bot, cloned_text, chat_id).await;
+      }
+    };
+
+    let (h, m, s) = when.as_tuple();
+    let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
+
+    tokio::spawn(task_future)
+  }
+}
+
+pub struct PeriodicSummarySender {
+  bot: Bot,
+  chat_id: ChatId,
+  by_date: NaiveDate,
+  dashboard: Arc<LockedDashboard>,
+}
+
+impl PeriodicSummarySender {
+  pub fn new(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) -> Self {
+    Self {
+      bot,
+      chat_id,
+      dashboard,
+      by_date: helpers::current_time().date_naive(),
+    }
   }
 
-  pub fn cancel(&self) {
-    self.task_handle.abort();
-    debug!("[PeriodicNotifier] The task was aborted");
+  pub async fn send_summary(bot: Bot, dashboard: Arc<LockedDashboard>, by_date: NaiveDate, chat_id: ChatId) {
+    info!("[PeriodicSummarySender] Task has started at {}", helpers::current_time());
+    let locked_dashboard = dashboard.read().await;
+    match locked_dashboard.summary(&by_date) {
+      Ok(summary) => {
+        let msg = helpers::format_summary_msg(&summary, &by_date);
+        let _ = bot.send_message(chat_id, msg).parse_mode(ParseMode::MarkdownV2).await;
+        info!("[PeriodicSummarySender] Summary has been successfully sent");
+      }
+      Err(DashboardError::EmptyParticipants) => {
+        warn!("[PeriodicSummarySender] The participants were not found");
+      }
+    }
+    info!("[PeriodicSummarySender] Task has finished at {}", helpers::current_time());
+  }
+}
+
+impl EveryDayTask for PeriodicSummarySender {
+  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
+    info!("[PeriodicSummarySender] Scheduling every day task for {}", when);
+
+    let bot = self.bot.clone();
+    let chat_id = self.chat_id;
+    let by_date = self.by_date;
+    let dashboard = self.dashboard.clone();
+
+    let task = move || {
+      let cloned_bot = bot.clone();
+      let cloned_dashboard = dashboard.clone();
+      async move {
+        PeriodicSummarySender::send_summary(cloned_bot, cloned_dashboard, by_date, chat_id).await;
+      }
+    };
+
+    let (h, m, s) = when.as_tuple();
+    let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
+
+    tokio::spawn(task_future)
   }
 }
