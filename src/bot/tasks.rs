@@ -9,7 +9,7 @@ use teloxide::{
   Bot,
 };
 use tokio::sync::RwLock;
-use tokio_schedule::{every, EveryDay, Job};
+use tokio_schedule::{EveryDay, EveryMinute, Job};
 
 use crate::{
   dashboard::{Dashboard, DashboardError},
@@ -19,32 +19,23 @@ use crate::{
 use super::{AsyncSheetsHub, LockedDashboard};
 
 pub type EveryDayTime = EveryDay<Utc, Local>;
+pub type EveryMinuteTime = EveryMinute<Utc, Local>;
+pub type TaskHandler = tokio::task::JoinHandle<()>;
+
+pub trait PeriodicTask<T> {
+  fn schedule(&self, when: T) -> TaskHandler;
+}
 
 /// This task periodically downloads latest data from Sheets through the AsyncHub instance,
 /// and updates the Dashboard through RwLock
 pub struct PeriodicDataFetcher {
-  task_handle: tokio::task::JoinHandle<()>,
+  hub: Arc<AsyncSheetsHub>,
+  dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicDataFetcher {
-  pub fn schedule(interval_min: u32, hub: Arc<AsyncSheetsHub>, dashboard: Arc<RwLock<Dashboard>>) -> Self {
-    info!("[PeriodicDataFetcher] Scheduling the task");
-    let task = move || {
-      let cloned_hub = hub.clone();
-      let cloned_dashboard = dashboard.clone();
-      async move {
-        PeriodicDataFetcher::do_update(cloned_hub, cloned_dashboard).await;
-      }
-    };
-    let task_future = every(interval_min).minutes().in_timezone(&Utc).perform(task);
-    Self {
-      task_handle: tokio::spawn(task_future),
-    }
-  }
-
-  pub fn cancel(&self) {
-    self.task_handle.abort();
-    debug!("[PeriodicDataFetcher] The task was aborted");
+  pub fn new(hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) -> Self {
+    Self { hub, dashboard }
   }
 
   async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<RwLock<Dashboard>>) {
@@ -75,8 +66,22 @@ impl PeriodicDataFetcher {
   }
 }
 
-pub trait EveryDayTask<T> {
-  fn schedule(&self, when: T) -> tokio::task::JoinHandle<()>;
+impl PeriodicTask<EveryMinuteTime> for PeriodicDataFetcher {
+  fn schedule(&self, when: EveryMinuteTime) -> TaskHandler {
+    info!("[PeriodicDataFetcher] Scheduling the task");
+
+    let hub = self.hub.clone();
+    let dashboard = self.dashboard.clone();
+
+    let task = move || {
+      let cloned_hub = hub.clone();
+      let cloned_dashboard = dashboard.clone();
+      async move {
+        PeriodicDataFetcher::do_update(cloned_hub, cloned_dashboard).await;
+      }
+    };
+    tokio::spawn(when.perform(task))
+  }
 }
 
 /// This task periodically (once a day) sends text to the specified 'chat_id'
@@ -104,8 +109,8 @@ impl PeriodicNotifier {
   }
 }
 
-impl EveryDayTask<EveryDayTime> for PeriodicNotifier {
-  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
+impl PeriodicTask<EveryDayTime> for PeriodicNotifier {
+  fn schedule(&self, when: EveryDayTime) -> TaskHandler {
     info!("[PeriodicNotifier] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();
@@ -153,8 +158,8 @@ impl PeriodicSummarySender {
   }
 }
 
-impl EveryDayTask<EveryDayTime> for PeriodicSummarySender {
-  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
+impl PeriodicTask<EveryDayTime> for PeriodicSummarySender {
+  fn schedule(&self, when: EveryDayTime) -> TaskHandler {
     info!("[PeriodicSummarySender] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();

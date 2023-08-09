@@ -3,7 +3,7 @@ use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
 use google_sheets4::api::Sheet;
 use itertools::free::join;
 use log::{debug, info, trace};
-use tokio_schedule::{every, EveryDay};
+use tokio_schedule::{every, EveryDay, EveryMinute};
 
 #[allow(dead_code)]
 struct Month {
@@ -137,6 +137,10 @@ pub fn current_time_utc_msk() -> DateTime<Utc> {
 
 pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> EveryDay<Utc, Local> {
   every(1).day().at(h, m, s).in_timezone(&Utc)
+}
+
+pub fn every_interval_utc(period: u32) -> EveryMinute<Utc, Local> {
+  every(period).minutes().in_timezone(&Utc)
 }
 
 pub fn derive_title_name() -> String {

@@ -22,13 +22,16 @@ use crate::{
   api::AsyncSheetsHub,
   bot::{
     error::CongratulatorError as Error,
-    tasks::{EveryDayTask, PeriodicNotifier, PeriodicSummarySender},
+    tasks::{PeriodicNotifier, PeriodicSummarySender, PeriodicTask},
   },
   dashboard::{Dashboard, DashboardError},
-  helpers::{self, current_time_utc_msk, every_day_time_utc},
+  helpers::{self, current_time_utc_msk, every_day_time_utc, every_interval_utc},
 };
 
-use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
+use self::{
+  config::CongratulatorConfig,
+  tasks::{PeriodicDataFetcher, TaskHandler},
+};
 
 #[derive(Clone, Default)]
 pub enum State {
@@ -63,8 +66,7 @@ pub struct Congratulator {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
-  fetcher: PeriodicDataFetcher,
-  handlers: Vec<tokio::task::JoinHandle<()>>,
+  task_handlers: Vec<TaskHandler>,
 }
 
 impl Congratulator {
@@ -79,19 +81,20 @@ impl Congratulator {
 
     // Create periodic task that will fetch the data periodically
     // Schedule every amount of minutes specified in API_DATA_FETCH_TASK_INTERVAL_MIN env variable
-    let fetcher = PeriodicDataFetcher::schedule(cfg.fetch_data_interval_min(), hub.clone(), dashboard.clone());
+    let fetcher = PeriodicDataFetcher::new(hub.clone(), dashboard.clone());
 
     // Create Bot instance
     let bot = Bot::new(cfg.bot_token_str());
 
     // Create periodic tasks that send a particular message at some time
     let target_chat_id = cfg.notify_chat_id();
-    let notify = PeriodicNotifier::new(bot.clone(), "Fill in the table 📋".to_string(), target_chat_id);
+    let notifier = PeriodicNotifier::new(bot.clone(), "Fill in the table 📋".to_string(), target_chat_id);
     let sender = PeriodicSummarySender::new(bot.clone(), dashboard.clone(), target_chat_id);
 
-    let handlers = vec![
-      notify.schedule(every_day_time_utc(18, 0, 0)), // 21:00 UTC+3
-      sender.schedule(every_day_time_utc(20, 0, 0)), // 23:00 UTC+3
+    let task_handlers = vec![
+      fetcher.schedule(every_interval_utc(cfg.fetch_data_interval_min())),
+      notifier.schedule(every_day_time_utc(18, 0, 0)), // 21:00 UTC+3
+      sender.schedule(every_day_time_utc(20, 0, 0)),   // 23:00 UTC+3
     ];
 
     bot.set_my_commands(Command::bot_commands()).await?;
@@ -110,8 +113,7 @@ impl Congratulator {
       bot,
       dispatcher,
       dashboard,
-      fetcher,
-      handlers,
+      task_handlers,
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -325,8 +327,7 @@ impl Congratulator {
 impl Drop for Congratulator {
   fn drop(&mut self) {
     debug!("[Congratulator] Dropping ...");
-    self.fetcher.cancel();
-    for h in self.handlers.iter() {
+    for h in self.task_handlers.iter() {
       h.abort()
     }
   }
