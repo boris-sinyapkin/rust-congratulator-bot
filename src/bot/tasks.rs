@@ -8,11 +8,10 @@ use teloxide::{
   types::{ChatId, ParseMode},
   Bot,
 };
-use tokio::sync::RwLock;
 use tokio_schedule::{EveryDay, EveryMinute, Job};
 
 use crate::{
-  dashboard::{Dashboard, DashboardError},
+  dashboard::DashboardError,
   helpers,
 };
 
@@ -38,7 +37,7 @@ impl PeriodicDataFetcher {
     Self { hub, dashboard }
   }
 
-  async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<RwLock<Dashboard>>) {
+  async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) {
     info!("[PeriodicDataFetcher] Task has started at {}", helpers::current_time_utc());
     debug!("[PeriodicDataFetcher] Fetching the latest data...");
     let latest_dashboard = match hub.fetch_dashboard().await {
@@ -129,6 +128,7 @@ impl PeriodicTask<EveryDayTime> for PeriodicNotifier {
   }
 }
 
+/// This task periodically (once a day) sends summary text similar to /todaysummary bot command
 pub struct PeriodicSummarySender {
   bot: Bot,
   chat_id: ChatId,
