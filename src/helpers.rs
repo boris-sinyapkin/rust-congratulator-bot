@@ -124,10 +124,10 @@ pub fn get_sheet_id_by_title(sheets: &[Sheet], title: &str) -> Option<i32> {
 }
 
 pub fn current_time_format(format: &str) -> String {
-  format!("{}", current_time().format(format))
+  format!("{}", current_time_utc().format(format))
 }
 
-pub fn current_time() -> DateTime<Utc> {
+pub fn current_time_utc() -> DateTime<Utc> {
   chrono::Utc::now()
 }
 
@@ -136,7 +136,7 @@ pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> EveryDay<Utc, Local> {
 }
 
 pub fn derive_title_name() -> String {
-  let current_time = current_time();
+  let current_time = current_time_utc();
   let month_number: u8 = current_time.month().try_into().unwrap();
   let year_number: u16 = current_time.year().try_into().unwrap();
 

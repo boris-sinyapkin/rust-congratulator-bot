@@ -48,7 +48,7 @@ impl PeriodicDataFetcher {
   }
 
   async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<RwLock<Dashboard>>) {
-    info!("[PeriodicDataFetcher] Task has started at {}", helpers::current_time());
+    info!("[PeriodicDataFetcher] Task has started at {}", helpers::current_time_utc());
     debug!("[PeriodicDataFetcher] Fetching the latest data...");
     let latest_dashboard = match hub.fetch_dashboard().await {
       Ok(data) => {
@@ -71,7 +71,7 @@ impl PeriodicDataFetcher {
       *locked_dashboard = latest_dashboard;
       trace!("[PeriodicDataFetcher] New dashboard has been successfully fetched and replaced with the old one");
     }
-    info!("[PeriodicDataFetcher] Task has finished at {}", helpers::current_time());
+    info!("[PeriodicDataFetcher] Task has finished at {}", helpers::current_time_utc());
   }
 }
 
@@ -92,7 +92,7 @@ impl PeriodicNotifier {
   }
 
   async fn do_notify(bot: Bot, text: String, chat_id: ChatId) {
-    info!("[PeriodicNotifier] Task has started at {}", helpers::current_time());
+    info!("[PeriodicNotifier] Task has started at {}", helpers::current_time_utc());
     match bot.send_message(chat_id, &text[..]).await {
       Ok(_) => info!("[PeriodicNotifier] Sent text='{}' to chat_id={}", text, chat_id),
       Err(err) => error!(
@@ -100,7 +100,7 @@ impl PeriodicNotifier {
         text, chat_id, err
       ),
     }
-    info!("[PeriodicNotifier] Task has finished at {}", helpers::current_time());
+    info!("[PeriodicNotifier] Task has finished at {}", helpers::current_time_utc());
   }
 }
 
@@ -136,9 +136,9 @@ impl PeriodicSummarySender {
   }
 
   pub async fn send_summary(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) {
-    info!("[PeriodicSummarySender] Task has started at {}", helpers::current_time());
+    info!("[PeriodicSummarySender] Task has started at {}", helpers::current_time_utc());
     let locked_dashboard = dashboard.read().await;
-    let by_date = helpers::current_time().date_naive(); // always send "today" summary
+    let by_date = helpers::current_time_utc().date_naive(); // always send "today" summary
     match locked_dashboard.summary(&by_date) {
       Ok(summary) => {
         let msg = helpers::format_summary_msg(&summary, &by_date);
@@ -149,7 +149,7 @@ impl PeriodicSummarySender {
         warn!("[PeriodicSummarySender] The participants were not found");
       }
     }
-    info!("[PeriodicSummarySender] Task has finished at {}", helpers::current_time());
+    info!("[PeriodicSummarySender] Task has finished at {}", helpers::current_time_utc());
   }
 }
 
