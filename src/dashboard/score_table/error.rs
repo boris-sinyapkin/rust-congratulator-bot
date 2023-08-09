@@ -1,69 +1,41 @@
-use std::fmt::Display;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ParseError {
+  #[error("Date parse error occured. Error kind: {0:?}")]
   DateParseError(chrono::format::ParseErrorKind),
+  #[error("Score parse error occured (cell index={0}). Error: {1:?}")]
   ScoreParseError(usize, std::num::ParseFloatError),
+  #[error("Percent parse error occured. Error kind: {0:?}")]
   PercentParseError(std::num::IntErrorKind),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum InvalidCell {
+  #[error("The date cell is invalid: {0:}")]
   InvalidDateCell(&'static str),
+  #[error("The percent cell is invalid: {0:}")]
   InvalidPercentCell(&'static str),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Empty {
+  #[error("Effective format can't be empty (cell index={0})")]
   EmptyEffectiveFormat(usize),
+  #[error("Formatted value can't be empty (cell index={0})")]
   EmptyFormattedValue(usize),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ScoreTableRecordError {
+  #[error("Unexpected field index = {0}")]
   UnexpectedFieldIndex(usize),
+  #[error(transparent)]
   ParseError(ParseError),
+  #[error(transparent)]
   InvalidCell(InvalidCell),
+  #[error(transparent)]
   Empty(Empty),
+  #[error("Unknown error has occured: {0}")]
   Unknown(&'static str),
 }
-
-impl Display for ScoreTableRecordError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      ScoreTableRecordError::Empty(kind) => match kind {
-        Empty::EmptyEffectiveFormat(i) => {
-          writeln!(f, "Effective format can't be empty (cell index={})", i)
-        }
-        Empty::EmptyFormattedValue(i) => {
-          writeln!(f, "Formatted value can't be empty (cell index={})", i)
-        }
-      },
-      ScoreTableRecordError::InvalidCell(kind) => match kind {
-        InvalidCell::InvalidDateCell(msg) => {
-          writeln!(f, "The date cell is invalid: {msg:}")
-        }
-        InvalidCell::InvalidPercentCell(msg) => {
-          writeln!(f, "The percent cell is invalid: {msg:}")
-        }
-      },
-      ScoreTableRecordError::ParseError(kind) => match kind {
-        ParseError::DateParseError(parse_error_kind) => {
-          writeln!(f, "Date parse error occured. Error kind: {:#?}", parse_error_kind)
-        }
-        ParseError::PercentParseError(parse_error_kind) => {
-          writeln!(f, "Percent parse error occured. Error kind: {:#?}", parse_error_kind)
-        }
-        ParseError::ScoreParseError(i, parse_error_kind) => {
-          writeln!(f, "Score parse error occured (cell index={}). Error: {:#?}", i, parse_error_kind)
-        }
-      },
-      ScoreTableRecordError::UnexpectedFieldIndex(i) => {
-        writeln!(f, "Unexpected field index = {}", i)
-      }
-      ScoreTableRecordError::Unknown(msg) => writeln!(f, "Unknown error has occured: {}", msg),
-    }
-  }
-}
-
-impl std::error::Error for ScoreTableRecordError {}

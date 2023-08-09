@@ -1,50 +1,23 @@
-use std::fmt::Display;
+use thiserror::Error;
 
 use crate::api;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum CongratulatorError {
-  AsyncSheetsHubError(api::error::AsyncSheetsHubError),
-  TeloxideRequestError(teloxide::RequestError),
-  ConfigError(config::ConfigError),
+  #[error(transparent)]
+  AsyncSheetsHubError(#[from] api::error::AsyncSheetsHubError),
+  #[error(transparent)]
+  TeloxideRequestError(#[from] teloxide::RequestError),
+  #[error(transparent)]
+  ConfigError(#[from] config::ConfigError),
+  #[error("Empty (None) callback data received")]
   EmptyCallbackData,
+  #[error("Dashboard is empty")]
   EmptyDashboard,
+  #[error("No participants have been identified")]
   EmpyParticipants,
+  #[error("Bot is not initialized")]
   BotIsNotInitialized,
+  #[error("Person was not found")]
   PersonNotFound,
 }
-
-impl Display for CongratulatorError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      CongratulatorError::BotIsNotInitialized => writeln!(f, "Bot is not initialized"),
-      CongratulatorError::PersonNotFound => writeln!(f, "Person was not found"),
-      CongratulatorError::EmptyCallbackData => writeln!(f, "Empty (None) callback data received"),
-      CongratulatorError::EmptyDashboard => writeln!(f, "Dashboard is empty"),
-      CongratulatorError::EmpyParticipants => writeln!(f, "No participants have been identified"),
-      CongratulatorError::AsyncSheetsHubError(err) => err.fmt(f),
-      CongratulatorError::TeloxideRequestError(err) => err.fmt(f),
-      CongratulatorError::ConfigError(err) => err.fmt(f),
-    }
-  }
-}
-
-impl std::convert::From<api::error::AsyncSheetsHubError> for CongratulatorError {
-  fn from(value: api::error::AsyncSheetsHubError) -> Self {
-    CongratulatorError::AsyncSheetsHubError(value)
-  }
-}
-
-impl std::convert::From<teloxide::RequestError> for CongratulatorError {
-  fn from(value: teloxide::RequestError) -> Self {
-    CongratulatorError::TeloxideRequestError(value)
-  }
-}
-
-impl std::convert::From<config::ConfigError> for CongratulatorError {
-  fn from(value: config::ConfigError) -> Self {
-    CongratulatorError::ConfigError(value)
-  }
-}
-
-impl std::error::Error for CongratulatorError {}
