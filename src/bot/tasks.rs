@@ -75,8 +75,8 @@ impl PeriodicDataFetcher {
   }
 }
 
-pub trait EveryDayTask {
-  fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()>;
+pub trait EveryDayTask<T> {
+  fn schedule(&self, when: T) -> tokio::task::JoinHandle<()>;
 }
 
 /// This task periodically (once a day) sends text to the specified 'chat_id'
@@ -104,7 +104,7 @@ impl PeriodicNotifier {
   }
 }
 
-impl EveryDayTask for PeriodicNotifier {
+impl EveryDayTask<EveryDayTime> for PeriodicNotifier {
   fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
     info!("[PeriodicNotifier] Scheduling every day task for {:?}", when);
 
@@ -153,7 +153,7 @@ impl PeriodicSummarySender {
   }
 }
 
-impl EveryDayTask for PeriodicSummarySender {
+impl EveryDayTask<EveryDayTime> for PeriodicSummarySender {
   fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
     info!("[PeriodicSummarySender] Scheduling every day task for {:?}", when);
 
