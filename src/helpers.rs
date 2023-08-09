@@ -1,5 +1,5 @@
 use crate::dashboard::score_table::{entities::Person, ScoreTableRecord};
-use chrono::{DateTime, Datelike, Local, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
 use google_sheets4::api::Sheet;
 use itertools::free::join;
 use log::{debug, info, trace};
@@ -129,6 +129,10 @@ pub fn current_time_format(format: &str) -> String {
 
 pub fn current_time_utc() -> DateTime<Utc> {
   chrono::Utc::now()
+}
+
+pub fn current_time_utc_msk() -> DateTime<Utc> {
+  current_time_utc() + Duration::hours(3)
 }
 
 pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> EveryDay<Utc, Local> {

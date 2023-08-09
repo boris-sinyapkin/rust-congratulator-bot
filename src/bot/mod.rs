@@ -25,7 +25,7 @@ use crate::{
     tasks::{EveryDayTask, PeriodicNotifier, PeriodicSummarySender},
   },
   dashboard::{Dashboard, DashboardError},
-  helpers::{self, current_time_utc, every_day_time_utc},
+  helpers::{self, current_time_utc_msk, every_day_time_utc},
 };
 
 use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
@@ -182,11 +182,11 @@ impl Congratulator {
   }
 
   async fn today_summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
-    Congratulator::summary(bot, msg, locked_dashboard, &current_time_utc().date_naive()).await
+    Congratulator::summary(bot, msg, locked_dashboard, &current_time_utc_msk().date_naive()).await
   }
 
   async fn yesterday_summary(bot: Bot, msg: Message, locked_dashboard: Arc<LockedDashboard>) -> CongratulatorHandlerResult {
-    if let Some(yesterday) = current_time_utc().date_naive().pred_opt() {
+    if let Some(yesterday) = current_time_utc_msk().date_naive().pred_opt() {
       Congratulator::summary(bot, msg, locked_dashboard, &yesterday).await?
     } else {
       error!("Unable to handle YesterdaySummary: can't derive the date for yesterday");
