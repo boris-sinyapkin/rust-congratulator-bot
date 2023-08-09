@@ -30,7 +30,7 @@ use crate::{
 
 use self::{
   config::CongratulatorConfig,
-  tasks::{PeriodicDataFetcher, TaskHandler},
+  tasks::{PeriodicDataFetcher, TaskHandle},
 };
 
 #[derive(Clone, Default)]
@@ -66,7 +66,7 @@ pub struct Congratulator {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
-  task_handlers: Vec<TaskHandler>,
+  task_handlers: Vec<TaskHandle>,
 }
 
 impl Congratulator {

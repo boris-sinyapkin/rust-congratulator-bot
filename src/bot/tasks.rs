@@ -10,19 +10,16 @@ use teloxide::{
 };
 use tokio_schedule::{EveryDay, EveryMinute, Job};
 
-use crate::{
-  dashboard::DashboardError,
-  helpers,
-};
+use crate::{dashboard::DashboardError, helpers};
 
 use super::{AsyncSheetsHub, LockedDashboard};
 
 pub type EveryDayTime = EveryDay<Utc, Local>;
 pub type EveryMinuteTime = EveryMinute<Utc, Local>;
-pub type TaskHandler = tokio::task::JoinHandle<()>;
+pub type TaskHandle = tokio::task::JoinHandle<()>;
 
 pub trait PeriodicTask<T> {
-  fn schedule(&self, when: T) -> TaskHandler;
+  fn schedule(&self, when: T) -> TaskHandle;
 }
 
 /// This task periodically downloads latest data from Sheets through the AsyncHub instance,
@@ -66,7 +63,7 @@ impl PeriodicDataFetcher {
 }
 
 impl PeriodicTask<EveryMinuteTime> for PeriodicDataFetcher {
-  fn schedule(&self, when: EveryMinuteTime) -> TaskHandler {
+  fn schedule(&self, when: EveryMinuteTime) -> TaskHandle {
     info!("[PeriodicDataFetcher] Scheduling the task");
 
     let hub = self.hub.clone();
@@ -109,7 +106,7 @@ impl PeriodicNotifier {
 }
 
 impl PeriodicTask<EveryDayTime> for PeriodicNotifier {
-  fn schedule(&self, when: EveryDayTime) -> TaskHandler {
+  fn schedule(&self, when: EveryDayTime) -> TaskHandle {
     info!("[PeriodicNotifier] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();
@@ -159,7 +156,7 @@ impl PeriodicSummarySender {
 }
 
 impl PeriodicTask<EveryDayTime> for PeriodicSummarySender {
-  fn schedule(&self, when: EveryDayTime) -> TaskHandler {
+  fn schedule(&self, when: EveryDayTime) -> TaskHandle {
     info!("[PeriodicSummarySender] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();
