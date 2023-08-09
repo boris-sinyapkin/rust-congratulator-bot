@@ -1,8 +1,9 @@
 use crate::dashboard::score_table::{entities::Person, ScoreTableRecord};
-use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Utc};
 use google_sheets4::api::Sheet;
 use itertools::free::join;
 use log::{debug, info, trace};
+use tokio_schedule::{every, EveryDay};
 
 #[allow(dead_code)]
 struct Month {
@@ -128,6 +129,10 @@ pub fn current_time_format(format: &str) -> String {
 
 pub fn current_time() -> DateTime<Utc> {
   chrono::Utc::now()
+}
+
+pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> EveryDay<Utc, Local> {
+  every(1).day().at(h, m, s).in_timezone(&Utc)
 }
 
 pub fn derive_title_name() -> String {

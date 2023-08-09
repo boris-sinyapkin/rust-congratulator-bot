@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Local, Utc};
 use log::{debug, error, info, trace, warn};
 use teloxide::{
   payloads::SendMessageSetters,
@@ -9,7 +9,7 @@ use teloxide::{
   Bot,
 };
 use tokio::sync::RwLock;
-use tokio_schedule::{every, Job};
+use tokio_schedule::{every, EveryDay, Job};
 
 use crate::{
   dashboard::{Dashboard, DashboardError},
@@ -17,6 +17,8 @@ use crate::{
 };
 
 use super::{AsyncSheetsHub, LockedDashboard};
+
+pub type EveryDayTime = EveryDay<Utc, Local>;
 
 /// This task periodically downloads latest data from Sheets through the AsyncHub instance,
 /// and updates the Dashboard through RwLock
@@ -77,27 +79,6 @@ pub trait EveryDayTask {
   fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()>;
 }
 
-pub struct EveryDayTime {
-  h: u32,
-  m: u32,
-  s: u32,
-}
-
-impl EveryDayTime {
-  pub fn new(h: u32, m: u32, s: u32) -> Self {
-    Self { h, m, s }
-  }
-  pub fn as_tuple(&self) -> (u32, u32, u32) {
-    (self.h, self.m, self.s)
-  }
-}
-
-impl std::fmt::Display for EveryDayTime {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}:{}:{}", self.h, self.m, self.s)
-  }
-}
-
 /// This task periodically (once a day) sends text to the specified 'chat_id'
 pub struct PeriodicNotifier {
   bot: Bot,
@@ -125,7 +106,7 @@ impl PeriodicNotifier {
 
 impl EveryDayTask for PeriodicNotifier {
   fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
-    info!("[PeriodicNotifier] Scheduling every day task for {}", when);
+    info!("[PeriodicNotifier] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();
     let text = self.text.clone();
@@ -139,10 +120,7 @@ impl EveryDayTask for PeriodicNotifier {
       }
     };
 
-    let (h, m, s) = when.as_tuple();
-    let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
-
-    tokio::spawn(task_future)
+    tokio::spawn(when.perform(task))
   }
 }
 
@@ -177,7 +155,7 @@ impl PeriodicSummarySender {
 
 impl EveryDayTask for PeriodicSummarySender {
   fn schedule(&self, when: EveryDayTime) -> tokio::task::JoinHandle<()> {
-    info!("[PeriodicSummarySender] Scheduling every day task for {}", when);
+    info!("[PeriodicSummarySender] Scheduling every day task for {:?}", when);
 
     let bot = self.bot.clone();
     let chat_id = self.chat_id;
@@ -191,9 +169,6 @@ impl EveryDayTask for PeriodicSummarySender {
       }
     };
 
-    let (h, m, s) = when.as_tuple();
-    let task_future = every(1).day().at(h, m, s).in_timezone(&Utc).perform(task);
-
-    tokio::spawn(task_future)
+    tokio::spawn(when.perform(task))
   }
 }

@@ -22,10 +22,10 @@ use crate::{
   api::AsyncSheetsHub,
   bot::{
     error::CongratulatorError as Error,
-    tasks::{EveryDayTask, EveryDayTime, PeriodicNotifier, PeriodicSummarySender},
+    tasks::{EveryDayTask, PeriodicNotifier, PeriodicSummarySender},
   },
   dashboard::{Dashboard, DashboardError},
-  helpers::{self, current_time},
+  helpers::{self, current_time, every_day_time_utc},
 };
 
 use self::{config::CongratulatorConfig, tasks::PeriodicDataFetcher};
@@ -90,8 +90,8 @@ impl Congratulator {
     let sender = PeriodicSummarySender::new(bot.clone(), dashboard.clone(), target_chat_id);
 
     let handlers = vec![
-      notify.schedule(EveryDayTime::new(18, 0, 0)), // 21:00 UTC+3
-      sender.schedule(EveryDayTime::new(20, 0, 0)), // 23:00 UTC+3
+      notify.schedule(every_day_time_utc(18, 0, 0)), // 21:00 UTC+3
+      sender.schedule(every_day_time_utc(20, 0, 0)), // 23:00 UTC+3
     ];
 
     bot.set_my_commands(Command::bot_commands()).await?;
