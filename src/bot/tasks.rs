@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::{Local, Utc};
 use log::{debug, error, info, trace, warn};
 use teloxide::{
   payloads::SendMessageSetters,
@@ -8,75 +7,188 @@ use teloxide::{
   types::{ChatId, ParseMode},
   Bot,
 };
-use tokio_schedule::{EveryDay, EveryMinute, Job};
 
-use crate::{dashboard::DashboardError, helpers};
+use crate::{
+  dashboard::DashboardError,
+  helpers::{self, PeriodicTime},
+};
 
 use super::{AsyncSheetsHub, LockedDashboard};
 
-pub type EveryDayTime = EveryDay<Utc, Local>;
-pub type EveryMinuteTime = EveryMinute<Utc, Local>;
 pub type TaskHandle = tokio::task::JoinHandle<()>;
 
-pub trait PeriodicTask<T> {
-  fn schedule(&self, when: T) -> TaskHandle;
+pub trait PeriodicTask: Sync + Send {
+  fn schedule(&mut self, when: PeriodicTime) -> bool {
+    info!("[{}] Scheduling the task ({})", self.name(), when);
+
+    if !self.is_finished() {
+      warn!("[{}] The task is already scheduled at {:?}", self.name(), when);
+      return false;
+    }
+
+    self.submit_job(when);
+    info!("[{}] Job was submitted", self.name());
+    true
+  }
+
+  fn is_finished(&self) -> bool {
+    if let Some(h) = self.handle() {
+      h.is_finished()
+    } else {
+      true
+    }
+  }
+
+  fn cancel(&self) {
+    if self.is_finished() {
+      return;
+    }
+    if let Some(h) = self.handle() {
+      h.abort();
+      info!("[{}] Task was cancelled", self.name());
+    }
+  }
+
+  fn submit_job(&mut self, when: PeriodicTime);
+  fn when(&self) -> Option<&PeriodicTime>;
+  fn handle(&self) -> Option<&TaskHandle>;
+  fn name(&self) -> &str;
+}
+
+pub struct TaskManager<'a> {
+  bot: Bot,
+  tasks: Vec<Box<dyn PeriodicTask + 'a>>,
+  dashboard: Arc<LockedDashboard>,
+}
+
+impl<'a> TaskManager<'a> {
+  pub fn new(bot: Bot, dashboard: Arc<LockedDashboard>) -> Self {
+    Self {
+      bot,
+      dashboard,
+      tasks: Vec::new(),
+    }
+  }
+
+  pub fn create_notifier_task(&self, text: String, chat_id: ChatId) -> PeriodicNotifier {
+    PeriodicNotifier {
+      bot: self.bot.clone(),
+      text,
+      chat_id,
+      name: "PeriodicNotifier".to_string(),
+      when: None,
+      handle: None,
+    }
+  }
+
+  pub fn create_data_fetcher_task(&self, hub: Arc<AsyncSheetsHub>) -> PeriodicDataFetcher {
+    PeriodicDataFetcher {
+      hub,
+      dashboard: self.dashboard.clone(),
+      name: "PeriodicDataFetcher".to_string(),
+      when: None,
+      handle: None,
+    }
+  }
+
+  pub fn create_summary_sender_task(&self, chat_id: ChatId) -> PeriodicSummarySender {
+    PeriodicSummarySender {
+      bot: self.bot.clone(),
+      dashboard: self.dashboard.clone(),
+      name: "PeriodicSummarySender".to_string(),
+      chat_id,
+      when: None,
+      handle: None,
+    }
+  }
+
+  pub fn schedule_task<Task>(&mut self, mut task: Task, when: PeriodicTime)
+  where
+    Task: 'a + PeriodicTask,
+  {
+    task.schedule(when);
+    self.tasks.push(Box::new(task));
+  }
+
+  pub fn finalize_tasks(&self) {
+    for t in &self.tasks {
+      t.cancel();
+    }
+  }
 }
 
 /// This task periodically downloads latest data from Sheets through the AsyncHub instance,
 /// and updates the Dashboard through RwLock
 pub struct PeriodicDataFetcher {
   hub: Arc<AsyncSheetsHub>,
+  name: String,
+  when: Option<PeriodicTime>,
+  handle: Option<TaskHandle>,
   dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicDataFetcher {
-  pub fn new(hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) -> Self {
-    Self { hub, dashboard }
-  }
-
-  async fn do_update(hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) {
-    info!("[PeriodicDataFetcher] Task has started at {}", helpers::current_time_utc());
-    debug!("[PeriodicDataFetcher] Fetching the latest data...");
+  async fn do_update(name: String, hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) {
+    info!("[{}] Task has started at {}", name, helpers::current_time_utc());
+    debug!("[{}] Fetching the latest data...", name);
     let latest_dashboard = match hub.fetch_dashboard().await {
       Ok(data) => {
-        debug!("[PeriodicDataFetcher] New dashboard has been successfully fetched");
+        debug!("[{}] New dashboard has been successfully fetched", name);
         data
       }
       Err(hub_err) => {
         error!(
-          "[PeriodicDataFetcher] Error occured while fetching the data: {:#?}. Exiting the task...",
-          hub_err
+          "[{}] Error occured while fetching the data: {:#?}. Exiting the task...",
+          name, hub_err
         );
         return;
       }
     };
 
-    trace!("[PeriodicDataFetcher] Acquiring WRITE lock on dashboard...");
+    trace!("[{}] Acquiring WRITE lock on dashboard...", name);
     {
       let mut locked_dashboard = dashboard.write().await;
-      trace!("[PeriodicDataFetcher] WRITE lock on dashboard has been acquired");
+      trace!("[{}] WRITE lock on dashboard has been acquired", name);
       *locked_dashboard = latest_dashboard;
-      trace!("[PeriodicDataFetcher] New dashboard has been successfully fetched and replaced with the old one");
+      trace!(
+        "[{}] New dashboard has been successfully fetched and replaced with the old one",
+        name
+      );
     }
-    info!("[PeriodicDataFetcher] Task has finished at {}", helpers::current_time_utc());
+    info!("[{}] Task has finished at {}", name, helpers::current_time_utc());
   }
 }
 
-impl PeriodicTask<EveryMinuteTime> for PeriodicDataFetcher {
-  fn schedule(&self, when: EveryMinuteTime) -> TaskHandle {
-    info!("[PeriodicDataFetcher] Scheduling the task");
+impl PeriodicTask for PeriodicDataFetcher {
+  fn submit_job(&mut self, when: PeriodicTime) {
+    assert!(self.is_finished(), "should be finished");
 
     let hub = self.hub.clone();
     let dashboard = self.dashboard.clone();
+    let name = self.name.clone();
 
     let task = move || {
       let cloned_hub = hub.clone();
       let cloned_dashboard = dashboard.clone();
+      let cloned_name = name.clone();
       async move {
-        PeriodicDataFetcher::do_update(cloned_hub, cloned_dashboard).await;
+        PeriodicDataFetcher::do_update(cloned_name, cloned_hub, cloned_dashboard).await;
       }
     };
-    tokio::spawn(when.perform(task))
+
+    self.handle = Some(when.perform_task(task));
+  }
+
+  fn handle(&self) -> Option<&TaskHandle> {
+    self.handle.as_ref()
+  }
+
+  fn when(&self) -> Option<&PeriodicTime> {
+    self.when.as_ref()
+  }
+
+  fn name(&self) -> &str {
+    &self.name[..]
   }
 }
 
@@ -84,93 +196,116 @@ impl PeriodicTask<EveryMinuteTime> for PeriodicDataFetcher {
 pub struct PeriodicNotifier {
   bot: Bot,
   text: String,
+  name: String,
+  when: Option<PeriodicTime>,
+  handle: Option<TaskHandle>,
   chat_id: ChatId,
 }
 
 impl PeriodicNotifier {
-  pub fn new(bot: Bot, text: String, chat_id: ChatId) -> Self {
-    Self { bot, text, chat_id }
-  }
-
-  async fn do_notify(bot: Bot, text: String, chat_id: ChatId) {
-    info!("[PeriodicNotifier] Task has started at {}", helpers::current_time_utc());
+  async fn do_notify(name: String, bot: Bot, text: String, chat_id: ChatId) {
+    info!("[{}] Task has started at {}", name, helpers::current_time_utc());
     match bot.send_message(chat_id, &text[..]).await {
-      Ok(_) => info!("[PeriodicNotifier] Sent text='{}' to chat_id={}", text, chat_id),
-      Err(err) => error!(
-        "[PeriodicNotifier] Unable to send text='{}' to chat_id={} due to {:?}",
-        text, chat_id, err
-      ),
+      Ok(_) => info!("[{}] Sent text='{}' to chat_id={}", name, text, chat_id),
+      Err(err) => error!("[{}] Unable to send text='{}' to chat_id={} due to {:?}", name, text, chat_id, err),
     }
-    info!("[PeriodicNotifier] Task has finished at {}", helpers::current_time_utc());
+    info!("[{}] Task has finished at {}", name, helpers::current_time_utc());
   }
 }
 
-impl PeriodicTask<EveryDayTime> for PeriodicNotifier {
-  fn schedule(&self, when: EveryDayTime) -> TaskHandle {
-    info!("[PeriodicNotifier] Scheduling every day task for {:?}", when);
+impl PeriodicTask for PeriodicNotifier {
+  fn submit_job(&mut self, when: PeriodicTime) {
+    assert!(self.is_finished(), "should be finished");
 
     let bot = self.bot.clone();
     let text = self.text.clone();
     let chat_id = self.chat_id;
+    let name = self.name.clone();
 
     let task = move || {
       let cloned_bot = bot.clone();
       let cloned_text = text.clone();
+      let cloned_name = name.clone();
       async move {
-        PeriodicNotifier::do_notify(cloned_bot, cloned_text, chat_id).await;
+        PeriodicNotifier::do_notify(cloned_name, cloned_bot, cloned_text, chat_id).await;
       }
     };
 
-    tokio::spawn(when.perform(task))
+    self.handle = Some(when.perform_task(task));
+  }
+
+  fn handle(&self) -> Option<&TaskHandle> {
+    self.handle.as_ref()
+  }
+
+  fn when(&self) -> Option<&PeriodicTime> {
+    self.when.as_ref()
+  }
+
+  fn name(&self) -> &str {
+    &self.name[..]
   }
 }
 
 /// This task periodically (once a day) sends summary text similar to /todaysummary bot command
 pub struct PeriodicSummarySender {
   bot: Bot,
+  name: String,
+  when: Option<PeriodicTime>,
+  handle: Option<TaskHandle>,
   chat_id: ChatId,
   dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicSummarySender {
-  pub fn new(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) -> Self {
-    Self { bot, chat_id, dashboard }
-  }
-
-  pub async fn send_summary(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) {
-    info!("[PeriodicSummarySender] Task has started at {}", helpers::current_time_utc());
+  pub async fn send_summary(name: String, bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) {
+    info!("[{}] Task has started at {}", name, helpers::current_time_utc());
     let locked_dashboard = dashboard.read().await;
     let by_date = helpers::current_time_utc().date_naive(); // always send "today" summary
     match locked_dashboard.summary(&by_date) {
       Ok(summary) => {
         let msg = helpers::format_summary_msg(&summary, &by_date);
         let _ = bot.send_message(chat_id, msg).parse_mode(ParseMode::MarkdownV2).await;
-        info!("[PeriodicSummarySender] Summary has been successfully sent");
+        info!("[{}] Summary has been successfully sent", name);
       }
       Err(DashboardError::EmptyParticipants) => {
-        warn!("[PeriodicSummarySender] The participants were not found");
+        warn!("[{}] The participants were not found", name);
       }
     }
-    info!("[PeriodicSummarySender] Task has finished at {}", helpers::current_time_utc());
+    info!("[{}] Task has finished at {}", name, helpers::current_time_utc());
   }
 }
 
-impl PeriodicTask<EveryDayTime> for PeriodicSummarySender {
-  fn schedule(&self, when: EveryDayTime) -> TaskHandle {
-    info!("[PeriodicSummarySender] Scheduling every day task for {:?}", when);
+impl PeriodicTask for PeriodicSummarySender {
+  fn submit_job(&mut self, when: PeriodicTime) {
+    assert!(self.is_finished(), "should be finished");
 
     let bot = self.bot.clone();
     let chat_id = self.chat_id;
+    let name = self.name.clone();
     let dashboard = self.dashboard.clone();
 
     let task = move || {
       let cloned_bot = bot.clone();
+      let cloned_name = name.clone();
       let cloned_dashboard = dashboard.clone();
       async move {
-        PeriodicSummarySender::send_summary(cloned_bot, cloned_dashboard, chat_id).await;
+        PeriodicSummarySender::send_summary(cloned_name, cloned_bot, cloned_dashboard, chat_id).await;
       }
     };
 
-    tokio::spawn(when.perform(task))
+    self.handle = Some(when.perform_task(task));
+  }
+
+  fn handle(&self) -> Option<&TaskHandle> {
+    self.handle.as_ref()
+  }
+
+  fn when(&self) -> Option<&PeriodicTime> {
+    self.when.as_ref()
+  }
+
+  fn name(&self) -> &str {
+    &self.name[..]
   }
 }

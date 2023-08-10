@@ -20,18 +20,12 @@ use tokio::sync::RwLock;
 
 use crate::{
   api::AsyncSheetsHub,
-  bot::{
-    error::CongratulatorError as Error,
-    tasks::{PeriodicNotifier, PeriodicSummarySender, PeriodicTask},
-  },
+  bot::{error::CongratulatorError as Error, tasks::TaskManager},
   dashboard::{Dashboard, DashboardError},
-  helpers::{self, current_time_utc_msk, every_day_time_utc, every_interval_utc},
+  helpers::{self, current_time_utc_msk, PeriodicTime},
 };
 
-use self::{
-  config::CongratulatorConfig,
-  tasks::{PeriodicDataFetcher, TaskHandle},
-};
+use self::config::CongratulatorConfig;
 
 #[derive(Clone, Default)]
 pub enum State {
@@ -62,15 +56,15 @@ type CongratulatorHandlerResult = Result<(), CongratulatorHandlerError>;
 type LockedDashboard = RwLock<Dashboard>;
 
 #[allow(dead_code)]
-pub struct Congratulator {
+pub struct Congratulator<'a> {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
-  task_handlers: Vec<TaskHandle>,
+  task_manager: Arc<TaskManager<'a>>
 }
 
-impl Congratulator {
-  pub async fn new(cfg: CongratulatorConfig) -> Result<Self, Error> {
+impl<'a> Congratulator<'a> {
+  pub async fn new(cfg: CongratulatorConfig) -> Result<Congratulator<'a>, Error> {
     info!("[Congratulator] Bot is getting created");
 
     // Create Hub to fetch the data
@@ -79,27 +73,33 @@ impl Congratulator {
     // Create shared data - the Dashboard
     let dashboard = Arc::new(RwLock::new(hub.fetch_dashboard().await?));
 
-    // Create periodic task that will fetch the data periodically
-    // Schedule every amount of minutes specified in API_DATA_FETCH_TASK_INTERVAL_MIN env variable
-    let fetcher = PeriodicDataFetcher::new(hub.clone(), dashboard.clone());
-
     // Create Bot instance
     let bot = Bot::new(cfg.bot_token_str());
 
-    // Create periodic tasks that send a particular message at some time
-    let target_chat_id = cfg.notify_chat_id();
-    let notifier = PeriodicNotifier::new(bot.clone(), "Fill in the table 📋".to_string(), target_chat_id);
-    let sender = PeriodicSummarySender::new(bot.clone(), dashboard.clone(), target_chat_id);
+    // Create task manager
+    let mut task_manager = TaskManager::new(bot.clone(), dashboard.clone());
 
-    let task_handlers = vec![
-      fetcher.schedule(every_interval_utc(cfg.fetch_data_interval_min())),
-      notifier.schedule(every_day_time_utc(18, 0, 0)), // 21:00 UTC+3
-      sender.schedule(every_day_time_utc(20, 0, 0)),   // 23:00 UTC+3
-    ];
+    // Create periodic task that will fetch the data periodically
+    // Schedule every amount of minutes specified in API_DATA_FETCH_TASK_INTERVAL_MIN env variable
+    let fetcher = task_manager.create_data_fetcher_task(hub.clone());
+
+    // Create periodic tasks that send a particular message at some time
+    let notifier = task_manager.create_notifier_task("Fill in the table 📋".to_string(), cfg.notify_chat_id());
+
+    // Create periodic task that send /todaysummary at some time
+    let sender = task_manager.create_summary_sender_task(cfg.notify_chat_id());
+
+    // Schedule periodic tasks
+    task_manager.schedule_task(fetcher, PeriodicTime::every_min_time_utc(cfg.fetch_data_interval_min()));
+    task_manager.schedule_task(notifier, PeriodicTime::every_day_time_utc(18, 0, 0)); // 21:00 UTC+3
+    task_manager.schedule_task(sender, PeriodicTime::every_day_time_utc(20, 0, 0)); // 23:00 UTC+3
+
+    // Wrap TM to Arc
+    let arc_task_manager = Arc::from(task_manager);
 
     bot.set_my_commands(Command::bot_commands()).await?;
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
-      .dependencies(dptree::deps![InMemStorage::<State>::new(), dashboard.clone()])
+      .dependencies(dptree::deps![InMemStorage::<State>::new(), dashboard.clone(), arc_task_manager.clone()])
       .default_handler(|upd| async move {
         warn!("[Congratulator] Unhandled update: {:?}", upd);
       })
@@ -113,7 +113,7 @@ impl Congratulator {
       bot,
       dispatcher,
       dashboard,
-      task_handlers,
+      task_manager: arc_task_manager
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -324,11 +324,9 @@ impl Congratulator {
   }
 }
 
-impl Drop for Congratulator {
+impl<'a> Drop for Congratulator<'a> {
   fn drop(&mut self) {
     debug!("[Congratulator] Dropping ...");
-    for h in self.task_handlers.iter() {
-      h.abort()
-    }
+    self.task_manager.finalize_tasks();
   }
 }

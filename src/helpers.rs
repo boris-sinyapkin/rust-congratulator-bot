@@ -1,9 +1,17 @@
-use crate::dashboard::score_table::{entities::Person, ScoreTableRecord};
+use std::{fmt::Display, future::Future};
+
+use crate::{
+  bot::tasks::TaskHandle,
+  dashboard::score_table::{entities::Person, ScoreTableRecord},
+};
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
 use google_sheets4::api::Sheet;
 use itertools::free::join;
 use log::{debug, info, trace};
-use tokio_schedule::{every, EveryDay, EveryMinute};
+use tokio_schedule::{every, EveryDay, EveryMinute, Job};
+
+pub type EveryDayTime = EveryDay<Utc, Local>;
+pub type EveryMinuteTime = EveryMinute<Utc, Local>;
 
 #[allow(dead_code)]
 struct Month {
@@ -135,14 +143,6 @@ pub fn current_time_utc_msk() -> DateTime<Utc> {
   current_time_utc() + Duration::hours(3)
 }
 
-pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> EveryDay<Utc, Local> {
-  every(1).day().at(h, m, s).in_timezone(&Utc)
-}
-
-pub fn every_interval_utc(period: u32) -> EveryMinute<Utc, Local> {
-  every(period).minutes().in_timezone(&Utc)
-}
-
 pub fn derive_title_name() -> String {
   let current_time = current_time_utc();
   let month_number: u8 = current_time.month().try_into().unwrap();
@@ -181,5 +181,46 @@ pub fn format_summary_msg(summary: &Vec<String>, by_date: &NaiveDate) -> String 
       by_date.format("%d.%m.%Y")
     )
     .replace('.', "\\.")
+  }
+}
+
+#[derive(Debug)]
+pub enum PeriodicTime {
+  EveryDay(EveryDayTime),
+  EveryMin(EveryMinuteTime),
+}
+
+impl PeriodicTime {
+  pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> Self {
+    let period = every(1).day().at(h, m, s).in_timezone(&Utc);
+
+    PeriodicTime::EveryDay(period)
+  }
+
+  pub fn every_min_time_utc(period: u32) -> Self {
+    let period = every(period).minutes().in_timezone(&Utc);
+
+    PeriodicTime::EveryMin(period)
+  }
+
+  pub fn perform_task<Fut, F>(self, func: F) -> TaskHandle
+  where
+    Fut: Future<Output = ()> + Send + 'static,
+    F: FnMut() -> Fut + Send + 'static,
+  {
+    let job = match self {
+      PeriodicTime::EveryDay(t) => t.perform(func),
+      PeriodicTime::EveryMin(t) => t.perform(func),
+    };
+    tokio::spawn(job)
+  }
+}
+
+impl Display for PeriodicTime {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      PeriodicTime::EveryDay(t) => write!(f, "Every day at {:?}", t),
+      PeriodicTime::EveryMin(t) => write!(f, "Every {:?} minutes", t),
+    }
   }
 }
