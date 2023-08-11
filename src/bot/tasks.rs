@@ -10,15 +10,21 @@ use teloxide::{
 
 use crate::{
   dashboard::DashboardError,
-  helpers::{self, PeriodicTime},
+  helpers::{self, PeriodicTimeUtc},
 };
 
 use super::{AsyncSheetsHub, LockedDashboard};
 
 pub type TaskHandle = tokio::task::JoinHandle<()>;
 
+#[derive(PartialEq)]
+pub enum PeriodcTaskType {
+  Notifier,
+  Fetcher,
+}
+
 pub trait PeriodicTask: Sync + Send {
-  fn schedule(&mut self, when: PeriodicTime) -> bool {
+  fn schedule(&mut self, when: PeriodicTimeUtc) -> bool {
     info!("[{}] Scheduling the task ({})", self.name(), when);
 
     if !self.is_finished() {
@@ -40,19 +46,19 @@ pub trait PeriodicTask: Sync + Send {
   }
 
   fn cancel(&self) {
-    if self.is_finished() {
-      return;
-    }
-    if let Some(h) = self.handle() {
-      h.abort();
+    if !self.is_finished() {
+      if let Some(h) = self.handle().as_ref() { h.abort() }
       info!("[{}] Task was cancelled", self.name());
     }
   }
 
-  fn submit_job(&mut self, when: PeriodicTime);
-  fn when(&self) -> Option<&PeriodicTime>;
+  fn submit_job(&mut self, when: PeriodicTimeUtc);
+
+  fn name(&self) -> &str; 
+  fn when(&self) -> Option<&PeriodicTimeUtc>;
   fn handle(&self) -> Option<&TaskHandle>;
-  fn name(&self) -> &str;
+  fn task_type(&self) -> &PeriodcTaskType;
+  fn description(&self) -> Option<String>;
 }
 
 pub struct TaskManager<'a> {
@@ -71,38 +77,27 @@ impl<'a> TaskManager<'a> {
   }
 
   pub fn create_notifier_task(&self, text: String, chat_id: ChatId) -> PeriodicNotifier {
-    PeriodicNotifier {
-      bot: self.bot.clone(),
-      text,
-      chat_id,
-      name: "PeriodicNotifier".to_string(),
-      when: None,
-      handle: None,
-    }
+    PeriodicNotifier::new(self.bot.clone(), text, chat_id)
   }
 
   pub fn create_data_fetcher_task(&self, hub: Arc<AsyncSheetsHub>) -> PeriodicDataFetcher {
-    PeriodicDataFetcher {
-      hub,
-      dashboard: self.dashboard.clone(),
-      name: "PeriodicDataFetcher".to_string(),
-      when: None,
-      handle: None,
-    }
+    PeriodicDataFetcher::new(hub, self.dashboard.clone())
   }
 
   pub fn create_summary_sender_task(&self, chat_id: ChatId) -> PeriodicSummarySender {
-    PeriodicSummarySender {
-      bot: self.bot.clone(),
-      dashboard: self.dashboard.clone(),
-      name: "PeriodicSummarySender".to_string(),
-      chat_id,
-      when: None,
-      handle: None,
-    }
+    PeriodicSummarySender::new(self.bot.clone(), self.dashboard.clone(), chat_id)
   }
 
-  pub fn schedule_task<Task>(&mut self, mut task: Task, when: PeriodicTime)
+  pub fn tasks(&self, task_type: PeriodcTaskType) -> Vec<&(dyn PeriodicTask + 'a)> {
+    self
+      .tasks
+      .iter()
+      .filter(|t| *t.task_type() == task_type)
+      .map(|t| t.as_ref())
+      .collect()
+  }
+
+  pub fn schedule_task<Task>(&mut self, mut task: Task, when: PeriodicTimeUtc)
   where
     Task: 'a + PeriodicTask,
   {
@@ -122,12 +117,24 @@ impl<'a> TaskManager<'a> {
 pub struct PeriodicDataFetcher {
   hub: Arc<AsyncSheetsHub>,
   name: String,
-  when: Option<PeriodicTime>,
+  when: Option<PeriodicTimeUtc>,
   handle: Option<TaskHandle>,
+  task_type: PeriodcTaskType,
   dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicDataFetcher {
+  fn new(hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) -> Self {
+    PeriodicDataFetcher {
+      hub,
+      dashboard,
+      name: "PeriodicDataFetcher".to_string(),
+      when: None,
+      handle: None,
+      task_type: PeriodcTaskType::Fetcher,
+    }
+  }
+
   async fn do_update(name: String, hub: Arc<AsyncSheetsHub>, dashboard: Arc<LockedDashboard>) {
     info!("[{}] Task has started at {}", name, helpers::current_time_utc());
     debug!("[{}] Fetching the latest data...", name);
@@ -160,7 +167,7 @@ impl PeriodicDataFetcher {
 }
 
 impl PeriodicTask for PeriodicDataFetcher {
-  fn submit_job(&mut self, when: PeriodicTime) {
+  fn submit_job(&mut self, when: PeriodicTimeUtc) {
     assert!(self.is_finished(), "should be finished");
 
     let hub = self.hub.clone();
@@ -176,14 +183,23 @@ impl PeriodicTask for PeriodicDataFetcher {
       }
     };
 
+    self.when = Some(when.clone());
     self.handle = Some(when.perform_task(task));
+  }
+
+  fn description(&self) -> Option<String> {
+    self.when().map(|w| format!("Я скачиваю данные из Google Sheets {}", w))
+  }
+
+  fn task_type(&self) -> &PeriodcTaskType {
+    &self.task_type
   }
 
   fn handle(&self) -> Option<&TaskHandle> {
     self.handle.as_ref()
   }
 
-  fn when(&self) -> Option<&PeriodicTime> {
+  fn when(&self) -> Option<&PeriodicTimeUtc> {
     self.when.as_ref()
   }
 
@@ -197,12 +213,24 @@ pub struct PeriodicNotifier {
   bot: Bot,
   text: String,
   name: String,
-  when: Option<PeriodicTime>,
+  when: Option<PeriodicTimeUtc>,
   handle: Option<TaskHandle>,
+  task_type: PeriodcTaskType,
   chat_id: ChatId,
 }
 
 impl PeriodicNotifier {
+  fn new(bot: Bot, text: String, chat_id: ChatId) -> Self {
+    PeriodicNotifier {
+      bot,
+      text,
+      chat_id,
+      name: "PeriodicNotifier".to_string(),
+      when: None,
+      handle: None,
+      task_type: PeriodcTaskType::Notifier,
+    }
+  }
   async fn do_notify(name: String, bot: Bot, text: String, chat_id: ChatId) {
     info!("[{}] Task has started at {}", name, helpers::current_time_utc());
     match bot.send_message(chat_id, &text[..]).await {
@@ -214,7 +242,7 @@ impl PeriodicNotifier {
 }
 
 impl PeriodicTask for PeriodicNotifier {
-  fn submit_job(&mut self, when: PeriodicTime) {
+  fn submit_job(&mut self, when: PeriodicTimeUtc) {
     assert!(self.is_finished(), "should be finished");
 
     let bot = self.bot.clone();
@@ -231,14 +259,23 @@ impl PeriodicTask for PeriodicNotifier {
       }
     };
 
+    self.when = Some(when.clone());
     self.handle = Some(when.perform_task(task));
+  }
+
+  fn description(&self) -> Option<String> {
+    self.when().map(|w| format!("Я прошу всех заполнить таблицу {}", w))
+  }
+
+  fn task_type(&self) -> &PeriodcTaskType {
+    &self.task_type
   }
 
   fn handle(&self) -> Option<&TaskHandle> {
     self.handle.as_ref()
   }
 
-  fn when(&self) -> Option<&PeriodicTime> {
+  fn when(&self) -> Option<&PeriodicTimeUtc> {
     self.when.as_ref()
   }
 
@@ -251,13 +288,26 @@ impl PeriodicTask for PeriodicNotifier {
 pub struct PeriodicSummarySender {
   bot: Bot,
   name: String,
-  when: Option<PeriodicTime>,
+  when: Option<PeriodicTimeUtc>,
   handle: Option<TaskHandle>,
+  task_type: PeriodcTaskType,
   chat_id: ChatId,
   dashboard: Arc<LockedDashboard>,
 }
 
 impl PeriodicSummarySender {
+  fn new(bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) -> Self {
+    PeriodicSummarySender {
+      bot,
+      dashboard,
+      name: "PeriodicSummarySender".to_string(),
+      chat_id,
+      when: None,
+      handle: None,
+      task_type: PeriodcTaskType::Notifier,
+    }
+  }
+
   pub async fn send_summary(name: String, bot: Bot, dashboard: Arc<LockedDashboard>, chat_id: ChatId) {
     info!("[{}] Task has started at {}", name, helpers::current_time_utc());
     let locked_dashboard = dashboard.read().await;
@@ -277,7 +327,7 @@ impl PeriodicSummarySender {
 }
 
 impl PeriodicTask for PeriodicSummarySender {
-  fn submit_job(&mut self, when: PeriodicTime) {
+  fn submit_job(&mut self, when: PeriodicTimeUtc) {
     assert!(self.is_finished(), "should be finished");
 
     let bot = self.bot.clone();
@@ -294,14 +344,23 @@ impl PeriodicTask for PeriodicSummarySender {
       }
     };
 
+    self.when = Some(when.clone());
     self.handle = Some(when.perform_task(task));
+  }
+
+  fn description(&self) -> Option<String> {
+    self.when().map(|w| format!("Я отправляю /todaysummary {}", w))
+  }
+
+  fn task_type(&self) -> &PeriodcTaskType {
+    &self.task_type
   }
 
   fn handle(&self) -> Option<&TaskHandle> {
     self.handle.as_ref()
   }
 
-  fn when(&self) -> Option<&PeriodicTime> {
+  fn when(&self) -> Option<&PeriodicTimeUtc> {
     self.when.as_ref()
   }
 

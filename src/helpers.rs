@@ -184,23 +184,23 @@ pub fn format_summary_msg(summary: &Vec<String>, by_date: &NaiveDate) -> String 
   }
 }
 
-#[derive(Debug)]
-pub enum PeriodicTime {
-  EveryDay(EveryDayTime),
-  EveryMin(EveryMinuteTime),
+#[derive(Debug, Clone)]
+pub enum PeriodicTimeUtc {
+  EveryDay(EveryDayTime, u32, u32, u32),
+  EveryMin(EveryMinuteTime, u32),
 }
 
-impl PeriodicTime {
+impl PeriodicTimeUtc {
   pub fn every_day_time_utc(h: u32, m: u32, s: u32) -> Self {
-    let period = every(1).day().at(h, m, s).in_timezone(&Utc);
+    let every_day = every(1).day().at(h, m, s).in_timezone(&Utc);
 
-    PeriodicTime::EveryDay(period)
+    PeriodicTimeUtc::EveryDay(every_day, h, m, s)
   }
 
   pub fn every_min_time_utc(period: u32) -> Self {
-    let period = every(period).minutes().in_timezone(&Utc);
+    let every_min = every(period).minutes().in_timezone(&Utc);
 
-    PeriodicTime::EveryMin(period)
+    PeriodicTimeUtc::EveryMin(every_min, period)
   }
 
   pub fn perform_task<Fut, F>(self, func: F) -> TaskHandle
@@ -209,18 +209,18 @@ impl PeriodicTime {
     F: FnMut() -> Fut + Send + 'static,
   {
     let job = match self {
-      PeriodicTime::EveryDay(t) => t.perform(func),
-      PeriodicTime::EveryMin(t) => t.perform(func),
+      PeriodicTimeUtc::EveryDay(t, _, _, _) => t.perform(func),
+      PeriodicTimeUtc::EveryMin(t, _) => t.perform(func),
     };
     tokio::spawn(job)
   }
 }
 
-impl Display for PeriodicTime {
+impl Display for PeriodicTimeUtc {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      PeriodicTime::EveryDay(t) => write!(f, "Every day at {:?}", t),
-      PeriodicTime::EveryMin(t) => write!(f, "Every {:?} minutes", t),
+      PeriodicTimeUtc::EveryDay(_, h, m, s) => write!(f, "ежедневно в {h:02}:{m:02}:{s:02} UTC"),
+      PeriodicTimeUtc::EveryMin(_, period) => write!(f, "каждые {period} минут(ы)"),
     }
   }
 }

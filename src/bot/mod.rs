@@ -22,7 +22,7 @@ use crate::{
   api::AsyncSheetsHub,
   bot::{error::CongratulatorError as Error, tasks::TaskManager},
   dashboard::{Dashboard, DashboardError},
-  helpers::{self, current_time_utc_msk, PeriodicTime},
+  helpers::{self, current_time_utc_msk, PeriodicTimeUtc},
 };
 
 use self::config::CongratulatorConfig;
@@ -48,6 +48,8 @@ enum Command {
   TodaySummary,
   #[command(description = "show score summary for yesterday")]
   YesterdaySummary,
+  #[command(description = "show enabled notifications")]
+  EnabledNotifications,
 }
 
 type CongratulatorDialogue = Dialogue<State, InMemStorage<State>>;
@@ -60,7 +62,7 @@ pub struct Congratulator<'a> {
   bot: Bot,
   dispatcher: Dispatcher<Bot, CongratulatorHandlerError, DefaultKey>,
   dashboard: Arc<LockedDashboard>,
-  task_manager: Arc<TaskManager<'a>>
+  task_manager: Arc<TaskManager<'a>>,
 }
 
 impl<'a> Congratulator<'a> {
@@ -90,16 +92,20 @@ impl<'a> Congratulator<'a> {
     let sender = task_manager.create_summary_sender_task(cfg.notify_chat_id());
 
     // Schedule periodic tasks
-    task_manager.schedule_task(fetcher, PeriodicTime::every_min_time_utc(cfg.fetch_data_interval_min()));
-    task_manager.schedule_task(notifier, PeriodicTime::every_day_time_utc(18, 0, 0)); // 21:00 UTC+3
-    task_manager.schedule_task(sender, PeriodicTime::every_day_time_utc(20, 0, 0)); // 23:00 UTC+3
+    task_manager.schedule_task(fetcher, PeriodicTimeUtc::every_min_time_utc(cfg.fetch_data_interval_min()));
+    task_manager.schedule_task(notifier, PeriodicTimeUtc::every_day_time_utc(18, 0, 0)); // 21:00 UTC+3
+    task_manager.schedule_task(sender, PeriodicTimeUtc::every_day_time_utc(20, 0, 0)); // 23:00 UTC+3
 
     // Wrap TM to Arc
     let arc_task_manager = Arc::from(task_manager);
 
     bot.set_my_commands(Command::bot_commands()).await?;
     let dispatcher = Dispatcher::builder(bot.clone(), Congratulator::schema())
-      .dependencies(dptree::deps![InMemStorage::<State>::new(), dashboard.clone(), arc_task_manager.clone()])
+      .dependencies(dptree::deps![
+        InMemStorage::<State>::new(),
+        dashboard.clone(),
+        arc_task_manager.clone()
+      ])
       .default_handler(|upd| async move {
         warn!("[Congratulator] Unhandled update: {:?}", upd);
       })
@@ -113,7 +119,7 @@ impl<'a> Congratulator<'a> {
       bot,
       dispatcher,
       dashboard,
-      task_manager: arc_task_manager
+      task_manager: arc_task_manager,
     };
 
     info!("[Congratulator] Bot successfully created");
@@ -180,6 +186,24 @@ impl<'a> Congratulator<'a> {
     }
 
     info!("[Congratulator][Scores] Finished handling (chat_id={})", chat_id);
+    Ok(())
+  }
+
+  async fn show_enabled_notifications(bot: Bot, msg: Message, task_manager: Arc<TaskManager<'_>>) -> CongratulatorHandlerResult {
+    let chat_id = msg.chat.id;
+    info!("[Congratulator][Notifications] Start handling Notifications (chat_id={})", chat_id);
+    let descriptions: Vec<_> = task_manager
+      .tasks(tasks::PeriodcTaskType::Notifier)
+      .iter()
+      .filter_map(|t| t.description())
+      .collect();
+    let msg = if descriptions.is_empty() {
+      "Список активных заданий пуст".to_string()
+    } else {
+      join(descriptions, "\n")
+    };
+    bot.send_message(chat_id, msg).await?;
+    info!("[Congratulator][Notifications] Finished handling (chat_id={})", chat_id);
     Ok(())
   }
 
@@ -305,8 +329,8 @@ impl<'a> Congratulator<'a> {
       .branch(case![Command::Participants].endpoint(Congratulator::participants))
       .branch(case![Command::Scores].endpoint(Congratulator::scores))
       .branch(case![Command::TodaySummary].endpoint(Congratulator::today_summary))
-      .branch(case![Command::YesterdaySummary])
-      .endpoint(Congratulator::yesterday_summary);
+      .branch(case![Command::YesterdaySummary].endpoint(Congratulator::yesterday_summary))
+      .branch(case![Command::EnabledNotifications].endpoint(Congratulator::show_enabled_notifications));
 
     let updates_handler = Update::filter_my_chat_member().branch(dptree::endpoint(Congratulator::my_chat_member_update_handler));
 
