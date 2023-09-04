@@ -70,7 +70,7 @@ impl AsyncSheetsHub {
 
     trace!("[AsyncHub] Score table parsing loop has started ...");
     loop {
-      match self.fetch_score_table(sheet_id, &request, false).await {
+      match self.fetch_score_table(sheet_id, &request, true).await {
         Ok(score_table) => {
           info!(
             "[AsyncHub] New score table parsed for person with name '{}'",
